@@ -601,8 +601,20 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
 def main():
     """Main entry point for setup wizard."""
     try:
-        wizard = SetupWizard()
-        wizard.run()
+        if "--web" in sys.argv:
+            from web_setup import WebSetupServer
+            port = 8080
+            for i, arg in enumerate(sys.argv):
+                if arg == "--port" and i + 1 < len(sys.argv):
+                    try:
+                        port = int(sys.argv[i + 1])
+                    except ValueError:
+                        pass
+            server = WebSetupServer(port=port)
+            server.serve()
+        else:
+            wizard = SetupWizard()
+            wizard.run()
     except KeyboardInterrupt:
         print("\nSetup cancelled by user.")
     except Exception as e:

@@ -90,6 +90,11 @@ class Config:
         return os.getenv("TELEGRAM_CHAT_ID", "")
     
     @property
+    def telegram_bot_username(self) -> str:
+        """Get Telegram bot username."""
+        return os.getenv("TELEGRAM_BOT_USERNAME", "")
+    
+    @property
     def ollama_host(self) -> str:
         """Get Ollama host URL."""
         return os.getenv("OLLAMA_HOST", "http://localhost:11434")
@@ -162,6 +167,7 @@ class Config:
         return {
             "telegram_bot_token": "***" if self.telegram_bot_token else "",
             "telegram_chat_id": self.telegram_chat_id,
+            "telegram_bot_username": self.telegram_bot_username,
             "ollama_host": self.ollama_host,
             "ollama_model": self.ollama_model,
             "database_path": str(self.database_path),
