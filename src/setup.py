@@ -180,27 +180,39 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         """Setup Telegram configuration."""
         print("\n--- Telegram Configuration ---")
         print("You need a Telegram bot token and chat ID.")
-        print("1. Open Telegram and search for @BotFather")
-        print("2. Send /newbot and follow the instructions")
-        print("3. Copy the bot token")
-        print("4. Send a message to your bot, then visit:")
-        print("   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates")
-        print("   to find your chat ID")
+        print()
+        print("How to create a Telegram bot:")
+        print("  1. Open Telegram and search for @BotFather")
+        print("  2. Send /newbot and follow the instructions")
+        print("  3. Copy the bot token (format: 123456789:ABCdefGHIjklMNOpqrSTUvwxYZ)")
+        print("  4. Send a message to your bot, then visit:")
+        print("     https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates")
+        print("     to find your chat ID (a number like: 123456789)")
         print()
         
         # Get bot token
         while True:
             token = self.prompt_input("Enter Telegram bot token")
             if self.validate_telegram_token(token):
+                print("  [OK] Valid bot token format")
                 break
-            print("Invalid token format. Expected format: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11")
+            print("  [ERROR] Invalid token format!")
+            print("  Expected format: 123456789:ABCdefGHIjklMNOpqrSTUvwxYZ")
+            print("  - Must start with numbers")
+            print("  - Must contain a colon (:)")
+            print("  - Must contain letters, numbers, underscores, or hyphens after colon")
+            print()
         
         # Get chat ID
         while True:
             chat_id = self.prompt_input("Enter Telegram chat ID")
             if chat_id.isdigit():
+                print("  [OK] Valid chat ID format")
                 break
-            print("Chat ID must be a number")
+            print("  [ERROR] Chat ID must be a number!")
+            print("  - Only digits are allowed (e.g., 6758055228)")
+            print("  - No spaces, letters, or special characters")
+            print()
         
         return {
             "TELEGRAM_BOT_TOKEN": token,
@@ -211,19 +223,32 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         """Setup Ollama configuration."""
         print("\n--- Ollama Configuration ---")
         print("Ollama should be installed and running locally.")
-        print("Default host: http://localhost:11434")
-        print("Default model: qwen2.5:7b")
+        print()
+        print("Default settings:")
+        print("  - Host: http://localhost:11434")
+        print("  - Model: qwen2.5-coder:1.5b (recommended for speed)")
+        print("  - Alternative: qwen2.5:7b (better quality but slower)")
         print()
         
         # Get Ollama host
         while True:
             host = self.prompt_input("Enter Ollama host URL", "http://localhost:11434")
             if self.validate_ollama_host(host):
+                print("  [OK] Valid Ollama host URL")
                 break
-            print("Invalid URL format. Must start with http:// or https://")
+            print("  [ERROR] Invalid URL format!")
+            print("  - Must start with http:// or https://")
+            print("  - Example: http://localhost:11434")
+            print()
         
         # Get model name
-        model = self.prompt_input("Enter Ollama model name", "qwen2.5:7b")
+        while True:
+            model = self.prompt_input("Enter Ollama model name", "qwen2.5-coder:1.5b")
+            if model.strip():
+                print(f"  [OK] Model set to: {model}")
+                break
+            print("  [ERROR] Model name cannot be empty!")
+            print()
         
         return {
             "OLLAMA_HOST": host,
@@ -236,11 +261,16 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         print("Enter YouTube channel IDs or URLs (comma-separated).")
         print("You can add up to 100 channels.")
         print()
-        print("Supported URL formats:")
-        print("  - https://www.youtube.com/channel/UCxxxxxx")
-        print("  - https://www.youtube.com/c/ChannelName")
-        print("  - https://www.youtube.com/@ChannelHandle")
-        print("  - Or just enter the channel ID directly (UCxxxxxx)")
+        print("Supported input formats:")
+        print("  - Channel URL: https://www.youtube.com/@ChannelHandle")
+        print("  - Channel URL: https://www.youtube.com/c/ChannelName")
+        print("  - Channel URL: https://www.youtube.com/channel/UCxxxxxx")
+        print("  - Channel ID directly: UCxxxxxx (starts with 'UC', 24 characters)")
+        print()
+        print("Examples:")
+        print("  - https://www.youtube.com/@veritasium")
+        print("  - UCin0m13qWv3-051xlWlHamA")
+        print("  - Multiple: URL1,URL2,ChannelID3")
         print()
         
         channel_input = self.prompt_input(
@@ -252,28 +282,71 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         if channel_input:
             items = [item.strip() for item in channel_input.split(",") if item.strip()]
             channel_ids = []
+            errors = []
             
             for item in items:
                 # Check if it's a URL or a channel ID
                 if item.startswith(("http://", "https://", "www.")):
-                    print(f"Extracting channel ID from URL: {item}")
+                    print(f"\n  Processing URL: {item}")
+                    
+                    # Validate URL format
+                    if not re.match(r'https?://(www\.)?(youtube\.com|youtu\.be)/', item):
+                        print("  [ERROR] Not a valid YouTube URL!")
+                        print("  - Must be a YouTube URL (youtube.com or youtu.be)")
+                        print("  - Example: https://www.youtube.com/@veritasium")
+                        errors.append(item)
+                        continue
+                    
+                    print("  [OK] Valid YouTube URL format")
+                    print("  Extracting channel ID...")
+                    
                     channel_id = self.extract_channel_id_from_url(item)
                     if channel_id:
-                        print(f"  [OK] Found channel ID: {channel_id}")
-                        channel_ids.append(channel_id)
+                        print(f"  [SUCCESS] Channel ID extracted: {channel_id}")
+                        if self.is_valid_channel_id(channel_id):
+                            print(f"  [OK] Valid channel ID format (starts with 'UC', 24 characters)")
+                            channel_ids.append(channel_id)
+                        else:
+                            print(f"  [WARNING] Extracted ID doesn't match expected format")
+                            channel_ids.append(channel_id)
                     else:
-                        print(f"  [ERROR] Could not extract channel ID from URL")
-                        print(f"    Please enter the channel ID manually (UCxxxxxx)")
+                        print(f"  [ERROR] Could not extract channel ID from this URL!")
+                        print("  Possible reasons:")
+                        print("  - URL does not point to a YouTube channel")
+                        print("  - Channel may not exist")
+                        print("  - Network error occurred")
+                        print("  Please enter the channel ID manually (starts with 'UC')")
+                        errors.append(item)
+                
                 elif self.is_valid_channel_id(item):
                     # It's already a valid channel ID
+                    print(f"  [OK] Valid channel ID: {item}")
                     channel_ids.append(item)
+                
+                elif item.startswith("UC"):
+                    # Looks like a channel ID but wrong format
+                    print(f"  [WARNING] Looks like a channel ID but invalid format: {item}")
+                    print(f"  - Channel IDs must be exactly 24 characters")
+                    print(f"  - Your input: {len(item)} characters")
+                    print(f"  Skipping this entry.")
+                    errors.append(item)
+                
                 else:
-                    print(f"Invalid channel ID or URL: {item}")
-                    print("  Channel IDs should start with 'UC' and be 24 characters long")
+                    print(f"  [ERROR] Invalid input: {item}")
+                    print("  - If this is a URL, it must be a YouTube URL")
+                    print("  - If this is a channel ID, it must start with 'UC' and be 24 characters")
+                    print("  - Example: https://www.youtube.com/@veritasium")
+                    print("  - Example: UCin0m13qWv3-051xlWlHamA")
+                    errors.append(item)
+            
+            # Show summary
+            print()
+            if errors:
+                print(f"  [SUMMARY] {len(errors)} item(s) had errors and were skipped")
             
             # Limit to 100 channels
             if len(channel_ids) > 100:
-                print(f"Warning: You entered {len(channel_ids)} channels. Limiting to 100.")
+                print(f"  [WARNING] You entered {len(channel_ids)} channels. Limiting to 100.")
                 channel_ids = channel_ids[:100]
             
             # Remove duplicates while preserving order
@@ -285,12 +358,21 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
                     unique_channel_ids.append(cid)
             
             if len(unique_channel_ids) < len(channel_ids):
-                print(f"Removed {len(channel_ids) - len(unique_channel_ids)} duplicate(s)")
+                print(f"  [INFO] Removed {len(channel_ids) - len(unique_channel_ids)} duplicate(s)")
             
-            print(f"\nTotal channels: {len(unique_channel_ids)}")
+            if unique_channel_ids:
+                print(f"  [OK] Total channels configured: {len(unique_channel_ids)}")
+                print()
+                print("  Configured channels:")
+                for i, cid in enumerate(unique_channel_ids, 1):
+                    print(f"    {i}. {cid}")
+            else:
+                print("  [WARNING] No valid channels were added!")
+            
             channel_ids_str = ",".join(unique_channel_ids)
         else:
             channel_ids_str = ""
+            print("  [INFO] No channels entered. You can add them later.")
         
         return {
             "YOUTUBE_CHANNEL_IDS": channel_ids_str
@@ -303,47 +385,109 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         print()
         
         # Get start time
-        print("Start time options:")
-        print("  - Enter a time in HH:MM format (24-hour) to start at that time daily")
+        print("Start Time Configuration:")
+        print("  - Format: HH:MM (24-hour format)")
+        print("  - Examples: 06:30 (6:30 AM), 14:00 (2:00 PM), 20:30 (8:30 PM)")
+        print("  - Valid hours: 00-23")
+        print("  - Valid minutes: 00-59")
         print("  - Press Enter to start 5 minutes after setup completes")
         print()
-        
-        start_time = self.prompt_input(
-            "Enter start time (HH:MM format, e.g., 06:30)",
-            required=False
-        )
-        
-        # Validate start time format
-        if start_time:
-            while not re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', start_time):
-                print("Invalid time format. Please use HH:MM format (24-hour), e.g., 06:30")
-                start_time = self.prompt_input(
-                    "Enter start time (HH:MM format)",
-                    required=False
-                )
-                if not start_time:
-                    break
-        
-        # Get frequency
-        print("\nFrequency options:")
-        print("  - How often to check for new videos (1-24 hours)")
-        print("  - Example: 6 means check every 6 hours")
+        print("  Examples:")
+        print("    06:30  = Start at 6:30 AM daily")
+        print("    12:00  = Start at noon daily")
+        print("    18:45  = Start at 6:45 PM daily")
+        print("    23:00  = Start at 11:00 PM daily")
         print()
         
-        frequency = self.prompt_input(
-            "Enter check frequency in hours (1-24)",
-            "6"
-        )
+        start_time = None
+        while True:
+            start_time_input = self.prompt_input(
+                "Enter start time (HH:MM format, 24-hour)",
+                required=False
+            )
+            
+            if not start_time_input:
+                print("  [INFO] No start time set. Scheduler will start 5 minutes after launch.")
+                break
+            
+            # Validate start time format
+            if not re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', start_time_input):
+                print("  [ERROR] Invalid time format!")
+                print("  - Must be in HH:MM format (24-hour)")
+                print("  - Hours: 00-23")
+                print("  - Minutes: 00-59")
+                print("  - Examples: 06:30, 14:00, 20:30")
+                print()
+                continue
+            
+            # Additional validation
+            hours, minutes = start_time_input.split(":")
+            hours = int(hours)
+            minutes = int(minutes)
+            
+            if hours < 0 or hours > 23:
+                print("  [ERROR] Hours must be between 00 and 23!")
+                continue
+            
+            if minutes < 0 or minutes > 59:
+                print("  [ERROR] Minutes must be between 00 and 59!")
+                continue
+            
+            print(f"  [OK] Start time set to: {start_time_input}")
+            start_time = start_time_input
+            break
         
-        # Validate frequency
-        try:
-            frequency = int(frequency)
-            if frequency < 1 or frequency > 24:
-                print("Invalid frequency. Setting to 6 hours.")
-                frequency = 6
-        except ValueError:
-            print("Invalid number. Setting to 6 hours.")
-            frequency = 6
+        # Get frequency
+        print()
+        print("Check Frequency Configuration:")
+        print("  - How often to check for new videos")
+        print("  - Valid range: 1-24 hours")
+        print("  - Example: 6 means check every 6 hours")
+        print()
+        print("  Common frequencies:")
+        print("    1  = Check every hour (most frequent)")
+        print("    2  = Check every 2 hours")
+        print("    4  = Check every 4 hours")
+        print("    6  = Check every 6 hours (recommended)")
+        print("    8  = Check every 8 hours")
+        print("    12 = Check every 12 hours (twice daily)")
+        print("    24 = Check once daily")
+        print()
+        
+        frequency = None
+        while True:
+            frequency_input = self.prompt_input(
+                "Enter check frequency in hours (1-24)",
+                "6"
+            )
+            
+            # Validate frequency is a number
+            try:
+                frequency = int(frequency_input)
+            except ValueError:
+                print("  [ERROR] Invalid input!")
+                print("  - Must be a whole number")
+                print("  - Example: 6")
+                print()
+                continue
+            
+            # Validate frequency range
+            if frequency < 1:
+                print("  [ERROR] Frequency too low!")
+                print("  - Minimum is 1 hour")
+                print("  - Use 1 for hourly checks")
+                print()
+                continue
+            
+            if frequency > 24:
+                print("  [ERROR] Frequency too high!")
+                print("  - Maximum is 24 hours")
+                print("  - Use 24 for once-daily checks")
+                print()
+                continue
+            
+            print(f"  [OK] Check frequency set to: every {frequency} hour(s)")
+            break
         
         config = {
             "SCHEDULE_FREQUENCY_HOURS": str(frequency)
@@ -377,7 +521,7 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
             from config import load_config
             
             config = load_config(str(self.env_file))
-            print("✓ Configuration loaded successfully!")
+            print("[OK] Configuration loaded successfully!")
             
             # Test Ollama connection
             print("\nTesting Ollama connection...")
@@ -388,20 +532,20 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
                     models = response.json().get("models", [])
                     model_names = [m.get("name") for m in models]
                     if config.ollama_model in model_names:
-                        print(f"✓ Ollama model '{config.ollama_model}' found")
+                        print(f"[OK] Ollama model '{config.ollama_model}' found")
                     else:
-                        print(f"⚠ Ollama model '{config.ollama_model}' not found")
+                        print(f"[WARNING] Ollama model '{config.ollama_model}' not found")
                         print(f"  Available models: {model_names}")
                         print(f"  Run: ollama pull {config.ollama_model}")
                 else:
-                    print("✗ Cannot connect to Ollama")
+                    print("[ERROR] Cannot connect to Ollama")
             except requests.exceptions.RequestException as e:
-                print(f"✗ Ollama connection failed: {e}")
+                print(f"[ERROR] Ollama connection failed: {e}")
             
             return True
             
         except Exception as e:
-            print(f"✗ Configuration test failed: {e}")
+            print(f"[ERROR] Configuration test failed: {e}")
             return False
     
     def run(self) -> None:
