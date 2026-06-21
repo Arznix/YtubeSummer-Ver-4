@@ -174,6 +174,7 @@ class AgentOrchestrator:
     def run_pipeline(self) -> None:
         """Run the complete pipeline: check for new videos and process them."""
         self.logger.info("Starting pipeline run...")
+        self.running = True
         
         try:
             # Check for new videos
@@ -203,9 +204,55 @@ class AgentOrchestrator:
         except Exception as e:
             self.logger.error(f"Pipeline run failed: {e}")
     
-    def start_scheduler(self, check_interval_minutes: int = 60) -> None:
+    def start_scheduler(self) -> None:
         """
-        Start the background scheduler.
+        Start the background scheduler with configured schedule.
+        
+        Uses SCHEDULE_START_TIME and SCHEDULE_FREQUENCY_HOURS from config.
+        """
+        start_time = self.config.schedule_start_time
+        frequency_hours = self.config.schedule_frequency_hours
+        next_run = self.config.get_next_run_time()
+        
+        self.logger.info(f"Starting scheduler...")
+        self.logger.info(f"  Start time: {start_time or 'Now + 5 minutes'}")
+        self.logger.info(f"  Frequency: Every {frequency_hours} hours")
+        self.logger.info(f"  Next run: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        self.running = True
+        
+        # Wait until start time
+        now = datetime.now()
+        if next_run > now:
+            wait_seconds = (next_run - now).total_seconds()
+            self.logger.info(f"Waiting {wait_seconds:.0f} seconds until start time...")
+            
+            # Sleep in small increments to allow for graceful shutdown
+            while self.running and datetime.now() < next_run:
+                time.sleep(min(10, wait_seconds))
+                wait_seconds = (next_run - datetime.now()).total_seconds()
+        
+        if not self.running:
+            return
+        
+        # Run the pipeline immediately at start time
+        self.run_pipeline()
+        
+        # Schedule recurring runs
+        schedule.every(frequency_hours).hours.do(self.run_pipeline)
+        
+        self.logger.info(f"Scheduler running. Next check in {frequency_hours} hours.")
+        
+        # Keep running until shutdown signal
+        while self.running:
+            schedule.run_pending()
+            time.sleep(1)
+        
+        self.logger.info("Scheduler stopped")
+    
+    def start_scheduler_with_interval(self, check_interval_minutes: int = 60) -> None:
+        """
+        Start the background scheduler with specified interval (legacy method).
         
         Args:
             check_interval_minutes: How often to check for new videos (in minutes).
@@ -244,10 +291,14 @@ class AgentOrchestrator:
         return {
             "running": self.running,
             "channels_configured": len(self.config.youtube_channel_ids),
+            "max_channels": self.config.MAX_CHANNELS,
             "database_path": str(self.config.database_path),
             "ollama_host": self.config.ollama_host,
             "ollama_model": self.config.ollama_model,
             "telegram_chat_id": self.config.telegram_chat_id,
+            "schedule_start_time": self.config.schedule_start_time or "Not set (defaults to now + 5 min)",
+            "schedule_frequency_hours": self.config.schedule_frequency_hours,
+            "next_run_time": self.config.get_next_run_time().strftime("%Y-%m-%d %H:%M:%S"),
             "statistics": stats
         }
 
@@ -258,7 +309,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="YouTube Summarizer Orchestrator")
     parser.add_argument("--once", action="store_true", help="Run pipeline once and exit")
-    parser.add_argument("--interval", type=int, default=60, help="Check interval in minutes (default: 60)")
+    parser.add_argument("--interval", type=int, help="Check interval in minutes (legacy: overrides config)")
     parser.add_argument("--status", action="store_true", help="Show status and exit")
     parser.add_argument("--env", type=str, help="Path to .env file")
     
@@ -282,9 +333,12 @@ def main():
         if args.once:
             # Run once
             orchestrator.run_once()
+        elif args.interval:
+            # Legacy: use specified interval
+            orchestrator.start_scheduler_with_interval(args.interval)
         else:
-            # Start scheduler
-            orchestrator.start_scheduler(args.interval)
+            # Use configured schedule
+            orchestrator.start_scheduler()
             
     except KeyboardInterrupt:
         print("\nShutdown requested by user")

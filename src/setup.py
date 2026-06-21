@@ -160,9 +160,10 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         }
     
     def setup_youtube_channels(self) -> dict:
-        """Setup YouTube channel configuration."""
+        """Setup YouTube channel configuration (up to 100 channels)."""
         print("\n--- YouTube Channel Configuration ---")
         print("Enter YouTube channel IDs (comma-separated).")
+        print("You can add up to 100 channels.")
         print("To find channel IDs:")
         print("1. Go to the YouTube channel page")
         print("2. View page source")
@@ -178,6 +179,13 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         # Clean up channel IDs
         if channel_ids:
             channel_ids = [cid.strip() for cid in channel_ids.split(",") if cid.strip()]
+            
+            # Limit to 100 channels
+            if len(channel_ids) > 100:
+                print(f"Warning: You entered {len(channel_ids)} channels. Limiting to 100.")
+                channel_ids = channel_ids[:100]
+            
+            print(f"Total channels: {len(channel_ids)}")
             channel_ids_str = ",".join(channel_ids)
         else:
             channel_ids_str = ""
@@ -185,6 +193,64 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         return {
             "YOUTUBE_CHANNEL_IDS": channel_ids_str
         }
+    
+    def setup_scheduling(self) -> dict:
+        """Setup scheduling configuration."""
+        print("\n--- Scheduling Configuration ---")
+        print("Configure how often to check for new videos.")
+        print()
+        
+        # Get start time
+        print("Start time options:")
+        print("  - Enter a time in HH:MM format (24-hour) to start at that time daily")
+        print("  - Press Enter to start 5 minutes after setup completes")
+        print()
+        
+        start_time = self.prompt_input(
+            "Enter start time (HH:MM format, e.g., 06:30)",
+            required=False
+        )
+        
+        # Validate start time format
+        if start_time:
+            while not re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', start_time):
+                print("Invalid time format. Please use HH:MM format (24-hour), e.g., 06:30")
+                start_time = self.prompt_input(
+                    "Enter start time (HH:MM format)",
+                    required=False
+                )
+                if not start_time:
+                    break
+        
+        # Get frequency
+        print("\nFrequency options:")
+        print("  - How often to check for new videos (1-24 hours)")
+        print("  - Example: 6 means check every 6 hours")
+        print()
+        
+        frequency = self.prompt_input(
+            "Enter check frequency in hours (1-24)",
+            "6"
+        )
+        
+        # Validate frequency
+        try:
+            frequency = int(frequency)
+            if frequency < 1 or frequency > 24:
+                print("Invalid frequency. Setting to 6 hours.")
+                frequency = 6
+        except ValueError:
+            print("Invalid number. Setting to 6 hours.")
+            frequency = 6
+        
+        config = {
+            "SCHEDULE_FREQUENCY_HOURS": str(frequency)
+        }
+        
+        if start_time:
+            config["SCHEDULE_START_TIME"] = start_time
+        
+        return config
     
     def save_configuration(self, config: dict) -> None:
         """
@@ -263,6 +329,9 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         # YouTube channels setup
         config.update(self.setup_youtube_channels())
         
+        # Scheduling setup
+        config.update(self.setup_scheduling())
+        
         # Save configuration
         self.save_configuration(config)
         
@@ -275,6 +344,10 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
             print("1. Ensure Ollama is running with the configured model")
             print("2. Run the orchestrator: python src/agent_orchestrator.py")
             print("3. Or run once: python src/agent_orchestrator.py --once")
+            print("\nScheduling:")
+            print("- The scheduler will start at the configured time")
+            print("- Videos will be checked at the configured frequency")
+            print("- All channels are checked together on the same schedule")
         else:
             print("\nSetup completed with warnings. Please check the configuration.")
 

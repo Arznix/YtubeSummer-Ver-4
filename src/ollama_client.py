@@ -35,25 +35,35 @@ Your task is to create a concise, informative summary of the provided video tran
 
 Provide the summary in a clear, structured format with bullet points or paragraphs as appropriate."""
     
-    def _make_request(self, endpoint: str, data: Dict[str, Any], timeout: int = 60) -> Optional[Dict[str, Any]]:
+    def _make_request(self, endpoint: str, data: Dict[str, Any] = None, timeout: int = 60, method: str = "POST") -> Optional[Dict[str, Any]]:
         """
         Make HTTP request to Ollama API.
         
         Args:
             endpoint: API endpoint URL
-            data: Request payload
+            data: Request payload (optional for GET requests)
             timeout: Request timeout in seconds
+            method: HTTP method (GET or POST)
             
         Returns:
             Response JSON or None if failed
         """
         try:
-            response = requests.post(
-                endpoint,
-                json=data,
-                headers={"Content-Type": "application/json"},
-                timeout=timeout
-            )
+            headers = {"Content-Type": "application/json"}
+            
+            if method.upper() == "GET":
+                response = requests.get(
+                    endpoint,
+                    headers=headers,
+                    timeout=timeout
+                )
+            else:
+                response = requests.post(
+                    endpoint,
+                    json=data or {},
+                    headers=headers,
+                    timeout=timeout
+                )
             
             response.raise_for_status()
             return response.json()
@@ -99,7 +109,7 @@ Provide the summary in a clear, structured format with bullet points or paragrap
         if stream:
             return self._generate_stream(data)
         else:
-            response = self._make_request(self.generate_endpoint, data)
+            response = self._make_request(self.generate_endpoint, data, timeout=300)
             if response and "response" in response:
                 return response["response"]
             return None
@@ -192,7 +202,7 @@ Provide the summary in a clear, structured format with bullet points or paragrap
             options={
                 "temperature": 0.3,  # Lower temperature for more factual summaries
                 "top_p": 0.9,
-                "num_predict": 1000  # Limit response length
+                "num_predict": 500  # Limit response length
             }
         )
         
@@ -211,8 +221,8 @@ Provide the summary in a clear, structured format with bullet points or paragrap
             True if available, False otherwise
         """
         try:
-            # Check if Ollama is running
-            response = self._make_request(self.tags_endpoint, {}, timeout=5)
+            # Check if Ollama is running using GET request
+            response = self._make_request(self.tags_endpoint, timeout=5, method="GET")
             
             if not response:
                 return False
@@ -240,7 +250,7 @@ Provide the summary in a clear, structured format with bullet points or paragrap
             List of model names
         """
         try:
-            response = self._make_request(self.tags_endpoint, {}, timeout=5)
+            response = self._make_request(self.tags_endpoint, timeout=5, method="GET")
             
             if not response:
                 return []

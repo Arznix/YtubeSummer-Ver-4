@@ -6,10 +6,11 @@ A locally hosted, privacy-focused YouTube subscription summarizer that monitors 
 
 - **Privacy-First**: All processing happens locally - no data sent to external AI services
 - **RSS Feed Monitoring**: No YouTube API quota required
-- **Local AI Summarization**: Uses Ollama with Qwen 2.5 (7B) model
+- **Local AI Summarization**: Uses Ollama with Qwen 2.5 models
 - **Telegram Notifications**: Delivers formatted summaries directly to your chat
 - **State Management**: SQLite database tracks processed videos
-- **Background Scheduling**: Automatic monitoring with configurable intervals
+- **Smart Scheduling**: Configurable start time and frequency (1-24 hours)
+- **Multi-Channel Support**: Monitor up to 100 YouTube channels
 - **Modular Architecture**: Agent Skills pattern for reusability
 
 ## Architecture
@@ -53,11 +54,24 @@ python src/setup.py
 Copy `.env.example` to `.env` and fill in your credentials:
 
 ```env
+# Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_CHAT_ID=your_chat_id_here
+
+# Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=qwen2.5:7b
-YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
+
+# YouTube Channel IDs (comma-separated, up to 100 channels)
+YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2,channel_id_3
+
+# Scheduling Configuration
+# Start time in HH:MM format (24-hour), e.g., 06:30 for 6:30 AM
+# If not set, defaults to current time + 5 minutes
+SCHEDULE_START_TIME=06:30
+
+# How often to check (1-24 hours)
+SCHEDULE_FREQUENCY_HOURS=6
 ```
 
 ### 4. Usage
@@ -66,12 +80,22 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
 # Run once to process new videos
 python src/agent_orchestrator.py --once
 
-# Run as background service (checks every 60 minutes)
+# Run with configured schedule (uses SCHEDULE_START_TIME and SCHEDULE_FREQUENCY_HOURS)
+python src/agent_orchestrator.py
+
+# Run with legacy interval (overrides config)
 python src/agent_orchestrator.py --interval 60
 
-# Check status
+# Check status and next run time
 python src/agent_orchestrator.py --status
 ```
+
+#### Scheduling Options
+
+- **Start Time**: Set `SCHEDULE_START_TIME` to a specific time (e.g., `06:30`) to start checking at that time daily
+- **Frequency**: Set `SCHEDULE_FREQUENCY_HOURS` to control how often to check (1-24 hours)
+- **Default**: If no start time is set, the scheduler starts 5 minutes after launch
+- **All channels are checked together** on the same schedule
 
 ## Project Structure
 
@@ -121,8 +145,33 @@ See `skills/*/SKILL.md` for detailed documentation.
 | `TELEGRAM_CHAT_ID` | Yes | Your Telegram chat ID |
 | `OLLAMA_HOST` | Yes | Ollama server URL (default: http://localhost:11434) |
 | `OLLAMA_MODEL` | No | Model name (default: qwen2.5:7b) |
-| `YOUTUBE_CHANNEL_IDS` | Yes | Comma-separated YouTube channel IDs |
+| `YOUTUBE_CHANNEL_IDS` | Yes | Comma-separated YouTube channel IDs (up to 100) |
+| `SCHEDULE_START_TIME` | No | Start time in HH:MM format (24-hour). Defaults to now + 5 min |
+| `SCHEDULE_FREQUENCY_HOURS` | No | Check frequency in hours (1-24, default: 6) |
 | `LOG_LEVEL` | No | Logging level (default: INFO) |
+
+### Scheduling Configuration
+
+The scheduler supports flexible scheduling options:
+
+- **Start Time**: Set a specific time to start checking (e.g., `06:30` for 6:30 AM)
+- **Frequency**: How often to check for new videos (1-24 hours)
+- **Default Behavior**: If no start time is set, the scheduler starts 5 minutes after launch
+- **All channels are checked together** on the same schedule
+
+Example configurations:
+```env
+# Check every 6 hours, starting at 6:30 AM
+SCHEDULE_START_TIME=06:30
+SCHEDULE_FREQUENCY_HOURS=6
+
+# Check every hour, starting now + 5 minutes
+SCHEDULE_FREQUENCY_HOURS=1
+
+# Check every 12 hours, starting at 8:00 PM
+SCHEDULE_START_TIME=20:00
+SCHEDULE_FREQUENCY_HOURS=12
+```
 
 ### Security Features
 
