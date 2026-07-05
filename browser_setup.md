@@ -94,6 +94,7 @@ The HTML page (`src/web_setup.py:28-410`) contains three main sections:
 ### 3. Telegram Bot Configuration Section
 - "Create / Configure Telegram Bot" button opens a **modal dialog** with:
   - Step-by-step instructions (use BotFather, get token, find chat ID via `getUpdates`)
+  - Tutorial video: [How to create a Telegram bot, get Chat ID and Token](https://www.youtube.com/watch?v=l5YDtSLGhqk)
   - Fields: Chat ID, Bot Username, API Key (password-masked input)
   - Validation on the server: token format regex check, chat ID must be numeric
 - After saving, shows a read-only summary with the masked API key
