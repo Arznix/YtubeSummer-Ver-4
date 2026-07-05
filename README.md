@@ -52,7 +52,7 @@ python src/setup.py --web     # Browser-based setup (recommended)
 
 ### 3. Configuration
 
-You can also use the browser based interface described in the [browser_setup.md](browser_setup.md). It uses a graphic interface to guide you through the setup.
+You can also use the browser based interface described in the browser_setup.md file. It uses a graphic interface to guide you through the setup and avoid having to do the steps in this section.
 
 Copy `.env.example` to `.env` and fill in your credentials:
 
