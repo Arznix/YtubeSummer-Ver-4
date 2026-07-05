@@ -48,7 +48,7 @@ pip install -r requirements.txt
 # Run setup wizard
 python src/setup.py           # Terminal wizard
 python src/setup.py --web     # Browser-based setup (recommended)
-                              # The browser will be launched by the python code \n but it will take a while to initialize so be patient.
+                              # The browser will be launched by the python code \\n but it will take a while to initialize so be patient.
 ```
 
 ### 3. Configuration
