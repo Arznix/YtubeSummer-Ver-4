@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from dotenv import load_dotenv, get_key
+import keyring
 
 
 class TestWebSetupLoadEnv(unittest.TestCase):
@@ -30,6 +31,13 @@ class TestWebSetupLoadEnv(unittest.TestCase):
             "SCHEDULE_FREQUENCY_HOURS", "SCHEDULE_START_TIME",
         ]:
             os.environ.pop(var, None)
+        # Clear keychain between tests
+        from config import KEYRING_SERVICE
+        for cred in ("telegram_bot_token", "telegram_chat_id"):
+            try:
+                keyring.delete_password(KEYRING_SERVICE, cred)
+            except keyring.errors.PasswordDeleteError:
+                pass
 
     def tearDown(self):
         # Clear any env vars we set
@@ -108,6 +116,12 @@ class TestWebSetupSaveEnv(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
         self.env_file = Path(self.test_dir) / ".env"
+        from config import KEYRING_SERVICE
+        for cred in ("telegram_bot_token", "telegram_chat_id"):
+            try:
+                keyring.delete_password(KEYRING_SERVICE, cred)
+            except keyring.errors.PasswordDeleteError:
+                pass
 
     def tearDown(self):
         for var in [
@@ -132,15 +146,17 @@ class TestWebSetupSaveEnv(unittest.TestCase):
         self.assertTrue(self.env_file.exists())
 
     def test_save_env_writes_key(self):
-        """_save_env writes a key correctly."""
+        """_save_env stores sensitive keys in OS keychain."""
+        from config import KEYRING_SERVICE
         server = self._make_server()
         server._save_env({"TELEGRAM_BOT_TOKEN": "123456789:ABCdef"})
 
-        value = get_key(str(self.env_file), "TELEGRAM_BOT_TOKEN")
+        value = keyring.get_password(KEYRING_SERVICE, "telegram_bot_token")
         self.assertEqual(value, "123456789:ABCdef")
 
     def test_save_env_writes_multiple_keys(self):
-        """_save_env writes multiple keys in one call."""
+        """_save_env stores sensitive keys in keychain, others in .env."""
+        from config import KEYRING_SERVICE
         server = self._make_server()
         server._save_env({
             "TELEGRAM_BOT_TOKEN": "token123",
@@ -148,31 +164,33 @@ class TestWebSetupSaveEnv(unittest.TestCase):
             "TELEGRAM_BOT_USERNAME": "my_bot",
         })
 
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_TOKEN"), "token123")
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_CHAT_ID"), "999")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_bot_token"), "token123")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_chat_id"), "999")
         self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_USERNAME"), "my_bot")
 
     def test_save_env_updates_existing_key(self):
-        """_save_env overwrites an existing key."""
-        self.env_file.write_text("TELEGRAM_BOT_TOKEN=old_token\n")
+        """_save_env overwrites an existing key in keychain."""
+        from config import KEYRING_SERVICE
+        keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", "old_token")
         server = self._make_server()
         server._save_env({"TELEGRAM_BOT_TOKEN": "new_token"})
 
-        value = get_key(str(self.env_file), "TELEGRAM_BOT_TOKEN")
+        value = keyring.get_password(KEYRING_SERVICE, "telegram_bot_token")
         self.assertEqual(value, "new_token")
 
     def test_save_env_preserves_other_keys(self):
-        """_save_env does not remove unrelated keys."""
+        """_save_env does not remove unrelated keys from .env."""
+        from config import KEYRING_SERVICE
         self.env_file.write_text(
-            "TELEGRAM_BOT_TOKEN=keep_me\n"
             "OLLAMA_HOST=http://localhost:11434\n"
         )
+        keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", "keep_me")
         server = self._make_server()
         server._save_env({"TELEGRAM_CHAT_ID": "123"})
 
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_TOKEN"), "keep_me")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_bot_token"), "keep_me")
         self.assertEqual(get_key(str(self.env_file), "OLLAMA_HOST"), "http://localhost:11434")
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_CHAT_ID"), "123")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_chat_id"), "123")
 
     def test_save_env_channels_list(self):
         """_save_env handles comma-separated channel IDs."""

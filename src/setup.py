@@ -501,15 +501,28 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
     def save_configuration(self, config: dict) -> None:
         """
         Save configuration to .env file.
-        
+        Sensitive credentials (bot token, chat ID) are stored in OS keychain.
+
         Args:
             config: Configuration dictionary
         """
-        # Create or update .env file
+        # Import Config for keychain storage
+        sys.path.insert(0, str(self.project_root / "src"))
+        from config import Config as Cfg
+
+        # Extract sensitive credentials for keychain storage
+        bot_token = config.pop("TELEGRAM_BOT_TOKEN", None)
+        chat_id = config.pop("TELEGRAM_CHAT_ID", None)
+
+        if bot_token and chat_id:
+            Cfg.store_credentials(bot_token, chat_id)
+
+        # Save remaining non-sensitive config to .env
         for key, value in config.items():
             set_key(str(self.env_file), key, value)
-        
+
         print(f"\nConfiguration saved to {self.env_file}")
+        print("Sensitive credentials (bot token, chat ID) stored in OS keychain.")
     
     def test_configuration(self) -> bool:
         """Test the configuration by loading it."""

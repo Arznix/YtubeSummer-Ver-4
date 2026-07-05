@@ -23,6 +23,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from web_setup import WebSetupServer
+from config import KEYRING_SERVICE
+import keyring
 
 
 def find_free_port():
@@ -77,6 +79,12 @@ class TestWebSetupAPI(unittest.TestCase):
             os.environ.pop(var, None)
         if self.env_file.exists():
             self.env_file.unlink()
+        # Clear keychain between tests
+        for cred in ("telegram_bot_token", "telegram_chat_id"):
+            try:
+                keyring.delete_password(KEYRING_SERVICE, cred)
+            except keyring.errors.PasswordDeleteError:
+                pass
 
     def _auth_headers(self):
         return {"X-Auth-Token": self.server._auth_token}
@@ -409,15 +417,15 @@ class TestWebSetupAPI(unittest.TestCase):
         self.assertEqual(value, "my_saved_bot")
 
     def test_telegram_persists_all_fields(self):
-        """All telegram fields are written to .env."""
+        """Sensitive fields stored in keychain, username in .env."""
         self._post("/api/telegram", {
             "bot_token": "123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
             "chat_id": "111222333",
             "username": "persist_bot",
         })
         from dotenv import get_key
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_TOKEN"), "123456789:ABCdefGHIjklMNOpqrsTUVwxyz")
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_CHAT_ID"), "111222333")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_bot_token"), "123456789:ABCdefGHIjklMNOpqrsTUVwxyz")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_chat_id"), "111222333")
         self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_USERNAME"), "persist_bot")
 
     def test_telegram_without_username(self):
@@ -432,7 +440,7 @@ class TestWebSetupAPI(unittest.TestCase):
     # --- POST /api/save ---
 
     def test_save_all_fields(self):
-        """POST /api/save writes all fields to .env."""
+        """POST /api/save writes sensitive to keychain, rest to .env."""
         status, data = self._post("/api/save", {
             "youtube_channel_ids": ["UCaaa", "UCbbb"],
             "schedule_frequency_hours": 4,
@@ -446,23 +454,22 @@ class TestWebSetupAPI(unittest.TestCase):
         from dotenv import get_key
         self.assertEqual(get_key(str(self.env_file), "YOUTUBE_CHANNEL_IDS"), "UCaaa,UCbbb")
         self.assertEqual(get_key(str(self.env_file), "SCHEDULE_FREQUENCY_HOURS"), "4")
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_TOKEN"), "123456789:ABCdef")
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_CHAT_ID"), "777")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_bot_token"), "123456789:ABCdef")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_chat_id"), "777")
         self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_USERNAME"), "saved_bot")
 
     def test_save_partial_fields(self):
         """POST /api/save with only some fields updates only those."""
+        keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", "old_token")
         self.env_file.write_text(
-            "TELEGRAM_BOT_TOKEN=old_token\n"
-            "TELEGRAM_CHAT_ID=old_id\n"
             "YOUTUBE_CHANNEL_IDS=UCold\n"
         )
         self._post("/api/save", {
             "telegram_chat_id": "new_id",
         })
         from dotenv import get_key
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_BOT_TOKEN"), "old_token")
-        self.assertEqual(get_key(str(self.env_file), "TELEGRAM_CHAT_ID"), "new_id")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_bot_token"), "old_token")
+        self.assertEqual(keyring.get_password(KEYRING_SERVICE, "telegram_chat_id"), "new_id")
         self.assertEqual(get_key(str(self.env_file), "YOUTUBE_CHANNEL_IDS"), "UCold")
 
     def test_save_empty_body(self):

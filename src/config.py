@@ -5,6 +5,10 @@ import re
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
+import keyring
+
+
+KEYRING_SERVICE = "youtube-summarizer"
 
 
 class ConfigError(Exception):
@@ -14,24 +18,24 @@ class ConfigError(Exception):
 
 class Config:
     """Configuration manager for the YouTube summarizer pipeline."""
-    
+
     MAX_CHANNELS = 100
-    
+
     def __init__(self, env_file: Optional[str] = None):
         """
         Initialize configuration.
-        
+
         Args:
             env_file: Path to .env file. If None, uses default .env in project root.
         """
         self.project_root = Path(__file__).parent.parent
-        
+
         if env_file is None:
             env_file = self.project_root / ".env"
-        
-        # Load environment variables (override system env vars with .env values)
+
+        # Load non-sensitive environment variables from .env
         load_dotenv(env_file, override=True)
-        
+
         # Validate and set configuration
         self._validate_config()
     
@@ -81,12 +85,18 @@ class Config:
     
     @property
     def telegram_bot_token(self) -> str:
-        """Get Telegram bot token."""
+        """Get Telegram bot token from OS keychain, falling back to env var."""
+        token = keyring.get_password(KEYRING_SERVICE, "telegram_bot_token")
+        if token:
+            return token
         return os.getenv("TELEGRAM_BOT_TOKEN", "")
-    
+
     @property
     def telegram_chat_id(self) -> str:
-        """Get Telegram chat ID."""
+        """Get Telegram chat ID from OS keychain, falling back to env var."""
+        chat_id = keyring.get_password(KEYRING_SERVICE, "telegram_chat_id")
+        if chat_id:
+            return chat_id
         return os.getenv("TELEGRAM_CHAT_ID", "")
     
     @property
@@ -186,6 +196,24 @@ class Config:
         print("Configuration:")
         for key, value in config.items():
             print(f"  {key}: {value}")
+
+    @staticmethod
+    def store_credentials(token: str, chat_id: str) -> None:
+        """Store sensitive credentials in OS keychain."""
+        keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", token)
+        keyring.set_password(KEYRING_SERVICE, "telegram_chat_id", chat_id)
+
+    @staticmethod
+    def clear_credentials() -> None:
+        """Remove stored credentials from OS keychain."""
+        try:
+            keyring.delete_password(KEYRING_SERVICE, "telegram_bot_token")
+        except keyring.errors.PasswordDeleteError:
+            pass
+        try:
+            keyring.delete_password(KEYRING_SERVICE, "telegram_chat_id")
+        except keyring.errors.PasswordDeleteError:
+            pass
 
 
 def load_config(env_file: Optional[str] = None) -> Config:

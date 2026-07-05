@@ -14,6 +14,8 @@ from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv, set_key
 
 from setup import SetupWizard
+from config import KEYRING_SERVICE
+import keyring
 
 
 # Setup request audit logger
@@ -128,7 +130,7 @@ Only watch the videos that seem interesting to you.
 <h2>Ollama Configuration</h2>
 <label for="ollama-host">Ollama Host URL:</label>
 <div class="input-row">
-<input type="text" id="ollama-host" placeholder="http://localhost:11434">
+<input type="text" id="ollama-host" value="http://localhost:11434">
 <button class="btn-enter" onclick="saveOllama()">Enter</button>
 <span id="ollama-status" style="margin-left:10px; font-size:13px;"></span>
 </div>
@@ -497,9 +499,13 @@ class WebSetupServer:
     def _load_env(self) -> dict:
         if self.env_file.exists():
             load_dotenv(self.env_file, override=True)
+
+        token = keyring.get_password(KEYRING_SERVICE, "telegram_bot_token")
+        chat_id = keyring.get_password(KEYRING_SERVICE, "telegram_chat_id")
+
         return {
-            "TELEGRAM_BOT_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", ""),
-            "TELEGRAM_CHAT_ID": os.getenv("TELEGRAM_CHAT_ID", ""),
+            "TELEGRAM_BOT_TOKEN": token or os.getenv("TELEGRAM_BOT_TOKEN", ""),
+            "TELEGRAM_CHAT_ID": chat_id or os.getenv("TELEGRAM_CHAT_ID", ""),
             "TELEGRAM_BOT_USERNAME": os.getenv("TELEGRAM_BOT_USERNAME", ""),
             "OLLAMA_HOST": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
             "OLLAMA_MODEL": os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b"),
@@ -512,7 +518,40 @@ class WebSetupServer:
         env_path = str(self.env_file)
         if not self.env_file.exists():
             self.env_file.touch()
+
+        sensitive_keys = {"TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"}
+        keyring_updates = {}
+        env_updates = {}
+
         for key, value in updates.items():
+            if key in sensitive_keys:
+                keyring_updates[key] = value
+            else:
+                env_updates[key] = value
+
+        # Strip sensitive keys from .env file to avoid duplication
+        if self.env_file.exists():
+            lines = self.env_file.read_text().splitlines(keepends=True)
+            filtered = [l for l in lines if not any(
+                l.strip().startswith(k + "=") for k in sensitive_keys
+            )]
+            self.env_file.write_text("".join(filtered))
+
+        # Remove sensitive keys from current process env
+        for key in sensitive_keys:
+            os.environ.pop(key, None)
+
+        # Store sensitive credentials in OS keychain
+        if "TELEGRAM_BOT_TOKEN" in keyring_updates or "TELEGRAM_CHAT_ID" in keyring_updates:
+            token = keyring_updates.get("TELEGRAM_BOT_TOKEN")
+            chat_id = keyring_updates.get("TELEGRAM_CHAT_ID")
+            if token:
+                keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", str(token))
+            if chat_id:
+                keyring.set_password(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
+
+        # Store non-sensitive config in .env
+        for key, value in env_updates.items():
             set_key(env_path, key, str(value))
 
     def _make_handler(self):

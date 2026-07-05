@@ -8,6 +8,9 @@ schedule>=1.2.0
 # YouTube transcript extraction
 youtube-transcript-api>=1.2.4
 
+# Secure credential storage via OS keychain (Windows Credential Manager, macOS Keychain, Linux secret service)
+keyring>=24.0.0
+
 # Optional: For development and testing
 # pytest>=7.4.0
 # pytest-cov>=4.1.0
