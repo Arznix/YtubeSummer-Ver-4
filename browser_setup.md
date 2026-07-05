@@ -65,6 +65,7 @@ All endpoints served by the same `HTTPServer`:
 | `/api/channels/add` | POST | Add a YouTube channel by URL or channel ID |
 | `/api/channels/delete` | POST | Remove a channel from the list |
 | `/api/frequency` | POST | Set check frequency (1–24 hours) |
+| `/api/ollama` | POST | Save Ollama host and model |
 | `/api/telegram` | POST | Save Telegram bot credentials |
 | `/api/save` | POST | Save entire configuration to `.env` at once |
 
@@ -91,7 +92,12 @@ The HTML page (`src/web_setup.py:28-410`) contains three main sections:
 - Number input (1–24) for how often to check for new videos
 - "Enter" button to save via `POST /api/frequency`
 
-### 3. Telegram Bot Configuration Section
+### 3. Ollama Configuration Section
+- Two text inputs: Ollama Host URL (default `http://localhost:11434`) and Model Name (default `qwen2.5:1.5b`)
+- Validates that host starts with `http://` or `https://`
+- "Enter" button to save via `POST /api/ollama`
+
+### 4. Telegram Bot Configuration Section
 - "Create / Configure Telegram Bot" button opens a **modal dialog** with:
   - Step-by-step instructions (use BotFather, get token, find chat ID via `getUpdates`)
   - Tutorial video: [How to create a Telegram bot, get Chat ID and Token](https://www.youtube.com/watch?v=l5YDtSLGhqk)
@@ -99,7 +105,7 @@ The HTML page (`src/web_setup.py:28-410`) contains three main sections:
   - Validation on the server: token format regex check, chat ID must be numeric
 - After saving, shows a read-only summary with the masked API key
 
-### 4. Save Button
+### 5. Save Button
 - Saves all current state (channels, frequency, Telegram credentials) to `.env` file via `POST /api/save`
 - Uses `python-dotenv`'s `set_key()` to write individual variables preserving existing values
 
@@ -113,6 +119,8 @@ The setup process writes to `.env` in the project root directory. The following 
 |----------|---------|--------|
 | `YOUTUBE_CHANNEL_IDS` | `UCabc123...,UCdef456...` | Channels section |
 | `SCHEDULE_FREQUENCY_HOURS` | `6` | Frequency section |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama section |
+| `OLLAMA_MODEL` | `qwen2.5:1.5b` | Ollama section |
 | `TELEGRAM_BOT_TOKEN` | `123456:ABCdef...` | Telegram modal |
 | `TELEGRAM_CHAT_ID` | `6758055228` | Telegram modal |
 | `TELEGRAM_BOT_USERNAME` | `my_youtube_bot` | Telegram modal (optional) |

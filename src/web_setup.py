@@ -123,6 +123,22 @@ Only watch the videos that seem interesting to you.
 </div>
 </div>
 
+<!-- Ollama Section -->
+<div class="section">
+<h2>Ollama Configuration</h2>
+<label for="ollama-host">Ollama Host URL:</label>
+<div class="input-row">
+<input type="text" id="ollama-host" placeholder="http://localhost:11434">
+<button class="btn-enter" onclick="saveOllama()">Enter</button>
+<span id="ollama-status" style="margin-left:10px; font-size:13px;"></span>
+</div>
+<label for="ollama-model">Model Name:</label>
+<div class="input-row">
+<input type="text" id="ollama-model" placeholder="qwen2.5:1.5b">
+<button class="btn-enter" onclick="saveOllama()">Enter</button>
+</div>
+</div>
+
 <!-- Telegram Section -->
 <div class="section">
 <h2>Telegram Bot Configuration</h2>
@@ -190,6 +206,8 @@ function apiHeaders() {
 var state = {
     channels: [],
     frequency: 6,
+    ollama_host: 'http://localhost:11434',
+    ollama_model: 'qwen2.5:1.5b',
     telegram: { token: '', chat_id: '', username: '' }
 };
 
@@ -199,6 +217,10 @@ function init() {
     .then(function(data) {
         state.channels = data.youtube_channel_ids || [];
         state.frequency = data.schedule_frequency_hours || 6;
+        state.ollama_host = data.ollama_host || 'http://localhost:11434';
+        state.ollama_model = data.ollama_model || 'qwen2.5:1.5b';
+        document.getElementById('ollama-host').value = state.ollama_host;
+        document.getElementById('ollama-model').value = state.ollama_model;
         state.telegram = {
             token: data.telegram_bot_token || '',
             chat_id: data.telegram_chat_id || '',
@@ -377,6 +399,38 @@ function saveTelegram() {
     });
 }
 
+function saveOllama() {
+    var host = document.getElementById('ollama-host').value.trim();
+    var model = document.getElementById('ollama-model').value.trim();
+    if (!host) {
+        document.getElementById('ollama-status').textContent = 'Host is required.';
+        document.getElementById('ollama-status').style.color = 'red';
+        return;
+    }
+    if (!host.startsWith('http://') && !host.startsWith('https://')) {
+        document.getElementById('ollama-status').textContent = 'Host must start with http:// or https://';
+        document.getElementById('ollama-status').style.color = 'red';
+        return;
+    }
+    fetch('/api/ollama', {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ollama_host: host, ollama_model: model || 'qwen2.5:1.5b'})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            document.getElementById('ollama-status').textContent = data.error;
+            document.getElementById('ollama-status').style.color = 'red';
+        } else {
+            state.ollama_host = host;
+            state.ollama_model = model || 'qwen2.5:1.5b';
+            document.getElementById('ollama-status').textContent = 'Ollama settings saved.';
+            document.getElementById('ollama-status').style.color = 'green';
+        }
+    });
+}
+
 function saveAll() {
     fetch('/api/save', {
         method: 'POST',
@@ -384,6 +438,8 @@ function saveAll() {
         body: JSON.stringify({
             youtube_channel_ids: state.channels,
             schedule_frequency_hours: state.frequency,
+            ollama_host: state.ollama_host,
+            ollama_model: state.ollama_model,
             telegram_chat_id: state.telegram.chat_id,
             telegram_bot_username: state.telegram.username,
             telegram_bot_token: state.telegram.token
@@ -640,6 +696,28 @@ class WebSetupServer:
                     self._send_json({"success": True, "frequency": freq})
                     self._log_audit("POST", "/api/frequency", 200)
 
+                elif parsed.path == "/api/ollama":
+                    body = self._read_body()
+                    host = body.get("ollama_host", "").strip()
+                    model = body.get("ollama_model", "").strip()
+
+                    if not host:
+                        self._send_json({"error": "Ollama host is required."}, 400)
+                        self._log_audit("POST", "/api/ollama", 400)
+                        return
+                    if not host.startswith(("http://", "https://")):
+                        self._send_json({"error": "Ollama host must start with http:// or https://"}, 400)
+                        self._log_audit("POST", "/api/ollama", 400)
+                        return
+
+                    updates = {"OLLAMA_HOST": host}
+                    if model:
+                        updates["OLLAMA_MODEL"] = model
+
+                    server._save_env(updates)
+                    self._send_json({"success": True})
+                    self._log_audit("POST", "/api/ollama", 200)
+
                 elif parsed.path == "/api/telegram":
                     body = self._read_body()
                     token = body.get("bot_token", "").strip()
@@ -689,6 +767,13 @@ class WebSetupServer:
                                 updates["SCHEDULE_FREQUENCY_HOURS"] = str(freq)
                         except (ValueError, TypeError):
                             pass
+
+                    ollama_host = body.get("ollama_host", "").strip()
+                    ollama_model = body.get("ollama_model", "").strip()
+                    if ollama_host:
+                        updates["OLLAMA_HOST"] = ollama_host
+                    if ollama_model:
+                        updates["OLLAMA_MODEL"] = ollama_model
 
                     token = body.get("telegram_bot_token", "").strip()
                     chat_id = body.get("telegram_chat_id", "").strip()
