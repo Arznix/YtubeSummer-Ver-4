@@ -14,8 +14,7 @@ from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv, set_key
 
 from setup import SetupWizard
-from config import KEYRING_SERVICE, get_config_dir, _read_credential_file, _write_credential_file
-import keyring
+from config import KEYRING_SERVICE, get_config_dir, _keyring_get, _keyring_set, _read_credential_file, _write_credential_file
 
 
 # Setup request audit logger
@@ -502,8 +501,8 @@ class WebSetupServer:
         if self.env_file.exists():
             load_dotenv(self.env_file, override=True)
 
-        token = keyring.get_password(KEYRING_SERVICE, "telegram_bot_token")
-        chat_id = keyring.get_password(KEYRING_SERVICE, "telegram_chat_id")
+        token = _keyring_get(KEYRING_SERVICE, "telegram_bot_token")
+        chat_id = _keyring_get(KEYRING_SERVICE, "telegram_chat_id")
 
         return {
             "TELEGRAM_BOT_TOKEN": token or os.getenv("TELEGRAM_BOT_TOKEN", ""),
@@ -550,14 +549,14 @@ class WebSetupServer:
             chat_id = keyring_updates.get("TELEGRAM_CHAT_ID")
             if token:
                 try:
-                    keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", str(token))
-                except Exception:
+                    _keyring_set(KEYRING_SERVICE, "telegram_bot_token", str(token))
+                except RuntimeError:
                     pass
                 creds["telegram_bot_token"] = token
             if chat_id:
                 try:
-                    keyring.set_password(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
-                except Exception:
+                    _keyring_set(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
+                except RuntimeError:
                     pass
                 creds["telegram_chat_id"] = chat_id
             _write_credential_file(self.config_dir, creds)

@@ -7,7 +7,13 @@ import re
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
-import keyring
+
+try:
+    import keyring
+    HAS_KEYRING = True
+except ImportError:
+    HAS_KEYRING = False
+    keyring = None
 
 
 KEYRING_SERVICE = "youtube-summarizer"
@@ -38,6 +44,8 @@ def _write_credential_file(config_dir: Path, creds: dict) -> None:
 
 def _keyring_get(service: str, key: str) -> Optional[str]:
     """Get a credential from the system keyring, falling back to the credential file."""
+    if not HAS_KEYRING:
+        return None
     try:
         val = keyring.get_password(service, key)
         if val:
@@ -49,16 +57,19 @@ def _keyring_get(service: str, key: str) -> Optional[str]:
 
 def _keyring_set(service: str, key: str, value: str) -> None:
     """Store a credential in the system keyring, falling back to the credential file."""
-    try:
-        keyring.set_password(service, key, value)
-        return
-    except Exception:
-        pass
+    if HAS_KEYRING:
+        try:
+            keyring.set_password(service, key, value)
+            return
+        except Exception:
+            pass
     raise RuntimeError(f"Failed to store credential '{key}': no suitable keyring backend available")
 
 
 def _keyring_delete(service: str, key: str) -> None:
     """Delete a credential from the system keyring, falling back to the credential file."""
+    if not HAS_KEYRING:
+        return
     try:
         keyring.delete_password(service, key)
     except keyring.errors.PasswordDeleteError:
