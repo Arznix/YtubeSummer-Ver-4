@@ -39,8 +39,8 @@ See [PREREQUISITES.md](PREREQUISITES.md) for detailed setup instructions.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/youtube-summarizer.git
-cd youtube-summarizer
+git clone https://github.com/Arznix/YtubeSummer-Ver-4.git
+cd YtubeSummer-Ver-4
 
 # Install dependencies
 pip install -r requirements.txt
@@ -105,7 +105,7 @@ python src/agent_orchestrator.py --status
 ## Project Structure
 
 ```
-youtube-summarizer/
+YtubeSummer-Ver-4/
 ├── src/                          # Source code
 │   ├── config.py                # Configuration management
 │   ├── state_manager.py         # SQLite state tracking

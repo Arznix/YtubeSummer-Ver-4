@@ -32,7 +32,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ytube Summarier - Setup</title>
+<title>Ytube Summarizer - Setup</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
@@ -85,7 +85,7 @@ tr:hover { background: #f0f0f0; }
 </head>
 <body>
 
-<h1>Ytube Summarier</h1>
+<h1>Ytube Summarizer</h1>
 
 <div class="auth-banner" id="auth-banner"></div>
 

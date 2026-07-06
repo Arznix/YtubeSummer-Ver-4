@@ -177,7 +177,7 @@ class TestWebSetupAPI(unittest.TestCase):
         status, content_type, body = self._get("/", include_auth=False)
         self.assertEqual(status, 200)
         self.assertIn("text/html", content_type)
-        self.assertIn("Ytube Summarier", body)
+        self.assertIn("Ytube Summarizer", body)
         self.assertIn("channel-url", body)
         self.assertIn("freq-input", body)
         self.assertIn("telegram-modal", body)
