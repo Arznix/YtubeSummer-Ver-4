@@ -1,5 +1,4 @@
 import os
-import sys
 from pathlib import Path
 from typing import Optional
 import re
@@ -14,12 +13,7 @@ APP_NAME = "ytube-summarizer"
 
 
 def get_config_dir() -> Path:
-    if sys.platform == "win32":
-        return Path(os.environ.get("ProgramData", "C:\\ProgramData")) / APP_NAME
-    elif sys.platform == "darwin":
-        return Path("/Library/Application Support") / APP_NAME
-    else:
-        return Path("/etc") / APP_NAME
+    return Path.home() / "Documents" / "TheConfigs"
 
 
 class ConfigError(Exception):
@@ -188,11 +182,9 @@ def load_config(env_file: Optional[str] = None) -> Config:
     Load and validate configuration.
 
     Args:
-        env_file: Path to .env file. If None, uses the OS-appropriate default:
+        env_file: Path to .env file. If None, defaults to:
 
-            Linux:   /etc/ytube-summarizer/.env
-            macOS:   /Library/Application Support/ytube-summarizer/.env
-            Windows: C:\\ProgramData\\ytube-summarizer\\.env
+            ~/Documents/TheConfigs/.env
 
     Returns:
         Config object with validated configuration.
