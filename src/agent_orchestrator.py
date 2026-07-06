@@ -25,7 +25,10 @@ class AgentOrchestrator:
         """
         self.config = config or load_config()
         self.state_manager = StateManager(self.config.database_path)
-        self.youtube_server = YouTubeMCPServer()
+        self.youtube_server = YouTubeMCPServer(
+            request_delay=self.config.youtube_request_delay,
+            proxy_list=self.config.youtube_proxy_list,
+        )
         self.ollama_client = OllamaClient(self.config.ollama_host, self.config.ollama_model)
         self.telegram_server = TelegramMCPServer(
             self.config.telegram_bot_token,
@@ -196,8 +199,8 @@ class AgentOrchestrator:
                 if success:
                     processed_count += 1
                 
-                # Small delay between processing to avoid rate limiting
-                time.sleep(1)
+                # Brief pause between video processing cycles
+                time.sleep(2)
             
             self.logger.info(f"Pipeline run completed. Processed {processed_count}/{len(new_videos)} videos")
             

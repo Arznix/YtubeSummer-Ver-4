@@ -1,5 +1,10 @@
 import feedparser
 import requests
+import time
+import os
+import threading
+import itertools
+import random
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
@@ -7,46 +12,137 @@ import re
 from xml.etree import ElementTree as ET
 
 
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+]
+
+
+class RateLimiter:
+    def __init__(self, min_interval: float = 15.0):
+        self.min_interval = min_interval
+        self._last_request = 0.0
+        self._lock = threading.Lock()
+
+    def wait(self):
+        with self._lock:
+            now = time.time()
+            elapsed = now - self._last_request
+            if elapsed < self.min_interval:
+                wait = self.min_interval - elapsed
+                time.sleep(wait)
+            self._last_request = time.time()
+
+
+class ProxyRotator:
+    def __init__(self, proxy_list: Optional[List[str]] = None):
+        self._proxies = proxy_list or []
+        self._cycle = itertools.cycle(self._proxies) if self._proxies else None
+
+    def get_proxies(self) -> Optional[Dict[str, str]]:
+        if not self._cycle:
+            return None
+        proxy = next(self._cycle)
+        return {"http": proxy, "https": proxy}
+
+
 class YouTubeMCPServer:
     """YouTube MCP Server for RSS feed parsing and transcript extraction."""
     
-    def __init__(self, timeout: int = 30):
+    def __init__(self, timeout: int = 30, request_delay: float = 15.0, proxy_list: Optional[List[str]] = None):
         """
         Initialize YouTube MCP Server.
-        
+
         Args:
             timeout: HTTP request timeout in seconds
+            request_delay: Minimum seconds between YouTube requests
+            proxy_list: List of proxy URLs to rotate through
         """
         self.timeout = timeout
+        self.request_delay = request_delay
         self.logger = logging.getLogger(__name__)
-        
+        self.rate_limiter = RateLimiter(request_delay)
+        self.proxy_rotator = ProxyRotator(proxy_list)
+        self._ua_cycle = itertools.cycle(USER_AGENTS)
+
         # YouTube RSS feed base URL
         self.rss_base_url = "https://www.youtube.com/feeds/videos.xml"
-        
+
         # YouTube video URL pattern
         self.video_url_pattern = re.compile(
             r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})'
         )
-    
+
+    def _get_headers(self) -> Dict[str, str]:
+        return {"User-Agent": next(self._ua_cycle)}
+
+    def _request_url(self, url: str, method: str = "GET", **kwargs) -> requests.Response:
+        self.rate_limiter.wait()
+        if "headers" not in kwargs:
+            kwargs["headers"] = self._get_headers()
+        proxies = self.proxy_rotator.get_proxies()
+        if proxies:
+            kwargs["proxies"] = proxies
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = self.timeout
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if method == "GET":
+                    response = requests.get(url, **kwargs)
+                elif method == "POST":
+                    response = requests.post(url, **kwargs)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
+
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", 10))
+                    self.logger.warning(
+                        f"Rate limited (429) on {url}. Waiting {retry_after}s "
+                        f"(attempt {attempt+1}/{max_retries})"
+                    )
+                    time.sleep(retry_after)
+                    continue
+
+                response.raise_for_status()
+                return response
+
+            except (requests.RequestException, ConnectionError) as e:
+                if attempt < max_retries - 1:
+                    backoff = (2 ** attempt) * 5 + random.uniform(0, 2)
+                    self.logger.warning(
+                        f"Request failed ({e}). Retrying in {backoff:.0f}s "
+                        f"(attempt {attempt+1}/{max_retries})"
+                    )
+                    time.sleep(backoff)
+                else:
+                    self.logger.error(f"Request to {url} failed after {max_retries} attempts: {e}")
+                    raise
+
+        raise RuntimeError(f"Failed to fetch {url} after {max_retries} attempts")
+
     def fetch_latest_videos_from_rss(self, channel_id: str) -> List[Dict[str, Any]]:
         """
         Fetch latest videos from YouTube channel RSS feed.
-        
+
         Args:
             channel_id: YouTube channel ID
-            
+
         Returns:
             List of video information dictionaries
         """
         try:
-            # Construct RSS feed URL
             feed_url = f"{self.rss_base_url}?channel_id={channel_id}"
-            
             self.logger.info(f"Fetching RSS feed for channel: {channel_id}")
-            
-            # Parse the feed
-            feed = feedparser.parse(feed_url)
-            
+
+            response = self._request_url(feed_url)
+            feed = feedparser.parse(response.text)
+
             if feed.bozo and not feed.entries:
                 self.logger.error(f"Error parsing RSS feed for channel {channel_id}: {feed.bozo_exception}")
                 return []
@@ -166,88 +262,120 @@ class YouTubeMCPServer:
     def get_video_transcript(self, video_id: str, languages: List[str] = None) -> Optional[str]:
         """
         Extract video transcript using youtube-transcript-api.
-        
+
         Args:
             video_id: YouTube video ID
             languages: List of preferred languages (default: ['en'])
-            
+
         Returns:
             Transcript text or None if not available
         """
         if languages is None:
             languages = ['en']
-        
+
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
-            
+
             self.logger.info(f"Fetching transcript for video: {video_id}")
-            
-            # Create API instance
-            ytt_api = YouTubeTranscriptApi()
-            
-            # Try to get transcript
-            try:
-                transcript = ytt_api.fetch(video_id, languages=languages)
-                
-                # Combine transcript snippets
-                transcript_text = ' '.join([snippet.text for snippet in transcript.snippets])
-                
-                self.logger.info(f"Successfully fetched transcript for video {video_id}")
-                return transcript_text
-                
-            except Exception as e:
-                self.logger.warning(f"Error fetching transcript for video {video_id}: {e}")
-                
-                # Try to list available transcripts and get any available
+
+            # Rate-limit before transcript API call
+            self.rate_limiter.wait()
+
+            # Apply proxy via env vars for library compatibility
+            proxies = self.proxy_rotator.get_proxies()
+            old_http = os.environ.pop("HTTP_PROXY", None)
+            old_https = os.environ.pop("HTTPS_PROXY", None)
+            if proxies:
+                if proxies.get("http"):
+                    os.environ["HTTP_PROXY"] = proxies["http"]
+                if proxies.get("https"):
+                    os.environ["HTTPS_PROXY"] = proxies["https"]
+
+            def _do_fetch(api, vid, langs):
+                transcript = api.fetch(vid, languages=langs)
+                return ' '.join([snippet.text for snippet in transcript.snippets])
+
+            max_retries = 3
+            for attempt in range(max_retries):
                 try:
-                    transcript_list = ytt_api.list(video_id)
-                    
-                    # Try to find any available transcript
-                    for transcript in transcript_list:
-                        try:
-                            fetched_transcript = transcript.fetch()
-                            transcript_text = ' '.join([snippet.text for snippet in fetched_transcript.snippets])
-                            self.logger.info(f"Fetched transcript in alternative language for video {video_id}")
-                            return transcript_text
-                        except Exception:
-                            continue
-                    
-                    # If no transcript found, return None
-                    self.logger.warning(f"No transcript available for video {video_id}")
-                    return None
-                    
-                except Exception as inner_e:
-                    self.logger.error(f"Error listing transcripts for video {video_id}: {inner_e}")
-                    return None
-        
+                    ytt_api = YouTubeTranscriptApi()
+                    transcript_text = _do_fetch(ytt_api, video_id, languages)
+                    self.logger.info(f"Successfully fetched transcript for video {video_id}")
+                    return transcript_text
+
+                except Exception as e:
+                    error_str = str(e).lower()
+                    is_rate_limit = "429" in error_str or "too many requests" in error_str
+
+                    if is_rate_limit and attempt < max_retries - 1:
+                        backoff = (2 ** attempt) * 10 + random.uniform(0, 5)
+                        self.logger.warning(
+                            f"Transcript rate limited for {video_id}. "
+                            f"Retrying in {backoff:.0f}s (attempt {attempt+1}/{max_retries})"
+                        )
+                        time.sleep(backoff)
+                        continue
+
+                    if attempt < max_retries - 1:
+                        backoff = (2 ** attempt) * 5 + random.uniform(0, 2)
+                        self.logger.warning(
+                            f"Transcript fetch failed for {video_id}: {e}. "
+                            f"Retrying in {backoff:.0f}s (attempt {attempt+1}/{max_retries})"
+                        )
+                        time.sleep(backoff)
+                        continue
+
+                    self.logger.warning(f"Transcript fetch failed for {video_id} after {max_retries} attempts: {e}")
+
+                    # Final fallback: try listing available transcripts
+                    try:
+                        transcript_list = ytt_api.list(video_id)
+                        for transcript in transcript_list:
+                            try:
+                                fetched = transcript.fetch()
+                                text = ' '.join([s.text for s in fetched.snippets])
+                                self.logger.info(f"Fetched transcript in alternative language for {video_id}")
+                                return text
+                            except Exception:
+                                continue
+                        self.logger.warning(f"No transcript available for {video_id}")
+                        return None
+                    except Exception as inner_e:
+                        self.logger.error(f"Error listing transcripts for {video_id}: {inner_e}")
+                        return None
+
+            return None
+
         except ImportError:
             self.logger.error("youtube-transcript-api not installed. Install with: pip install youtube-transcript-api")
             return None
         except Exception as e:
             self.logger.error(f"Unexpected error fetching transcript for video {video_id}: {e}")
             return None
+        finally:
+            # Restore proxy env vars
+            if old_http is not None:
+                os.environ["HTTP_PROXY"] = old_http
+            else:
+                os.environ.pop("HTTP_PROXY", None)
+            if old_https is not None:
+                os.environ["HTTPS_PROXY"] = old_https
+            else:
+                os.environ.pop("HTTPS_PROXY", None)
     
     def get_video_metadata(self, video_id: str) -> Optional[Dict[str, Any]]:
         """
         Get video metadata from YouTube page.
-        
+
         Args:
             video_id: YouTube video ID
-            
+
         Returns:
             Video metadata dictionary or None
         """
         try:
-            # Construct video URL
             video_url = f"https://www.youtube.com/watch?v={video_id}"
-            
-            # Send request to YouTube
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            response = requests.get(video_url, headers=headers, timeout=self.timeout)
-            response.raise_for_status()
+            response = self._request_url(video_url)
             
             # Extract basic metadata from page
             # Note: This is a simple extraction and may not work for all videos
@@ -359,28 +487,19 @@ class YouTubeMCPServer:
     def find_channel_id(self, channel_handle: str) -> Optional[str]:
         """
         Find channel ID from channel handle.
-        
+
         Args:
             channel_handle: YouTube channel handle (e.g., '@channelname')
-            
+
         Returns:
             Channel ID or None if not found
         """
         try:
-            # Remove @ if present
             if channel_handle.startswith('@'):
                 channel_handle = channel_handle[1:]
-            
-            # Construct channel URL
+
             channel_url = f"https://www.youtube.com/@{channel_handle}"
-            
-            # Send request to YouTube
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            response = requests.get(channel_url, headers=headers, timeout=self.timeout)
-            response.raise_for_status()
+            response = self._request_url(channel_url)
             
             # Extract channel ID from page
             channel_id_match = re.search(r'"channelId":"([^"]*)"', response.text)
@@ -402,22 +521,15 @@ class YouTubeMCPServer:
     def test_connection(self) -> bool:
         """
         Test connection to YouTube.
-        
+
         Returns:
             True if connection successful, False otherwise
         """
         try:
-            # Test RSS feed access
             test_url = "https://www.youtube.com/feeds/videos.xml?channel_id=UC-lHJZR3Gqxm24_Vd_AJ5Yw"
-            response = requests.get(test_url, timeout=self.timeout)
-            
-            if response.status_code == 200:
-                self.logger.info("YouTube connection test successful")
-                return True
-            else:
-                self.logger.warning(f"YouTube connection test failed with status: {response.status_code}")
-                return False
-                
+            self._request_url(test_url)
+            self.logger.info("YouTube connection test successful")
+            return True
         except Exception as e:
             self.logger.error(f"YouTube connection test failed: {e}")
             return False

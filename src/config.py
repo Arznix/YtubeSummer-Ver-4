@@ -131,6 +131,15 @@ class Config:
         if start_time and not re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', start_time):
             raise ConfigError("SCHEDULE_START_TIME must be in HH:MM format (24-hour)")
 
+        request_delay = self.youtube_request_delay
+        if request_delay < 1:
+            raise ConfigError("YOUTUBE_REQUEST_DELAY must be at least 1 second")
+
+        proxies = self.youtube_proxy_list
+        for proxy in proxies:
+            if not proxy.startswith(("http://", "https://", "socks4://", "socks5://")):
+                raise ConfigError(f"Invalid proxy URL: {proxy}. Must start with http://, https://, socks4://, or socks5://")
+
     @property
     def telegram_bot_token(self) -> str:
         token = _keyring_get(KEYRING_SERVICE, "telegram_bot_token")
@@ -188,6 +197,20 @@ class Config:
         except ValueError:
             return 6
 
+    @property
+    def youtube_request_delay(self) -> float:
+        try:
+            return float(os.getenv("YOUTUBE_REQUEST_DELAY", "15"))
+        except ValueError:
+            return 15.0
+
+    @property
+    def youtube_proxy_list(self) -> list:
+        proxies_str = os.getenv("YOUTUBE_PROXY_LIST", "")
+        if not proxies_str:
+            return []
+        return [p.strip() for p in proxies_str.split(",") if p.strip()]
+
     def get_next_run_time(self) -> datetime:
         now = datetime.now()
 
@@ -215,6 +238,8 @@ class Config:
             "max_channels": self.MAX_CHANNELS,
             "schedule_start_time": self.schedule_start_time or "Not set (defaults to now + 5 min)",
             "schedule_frequency_hours": self.schedule_frequency_hours,
+            "youtube_request_delay": self.youtube_request_delay,
+            "youtube_proxy_list": self.youtube_proxy_list,
             "next_run_time": self.get_next_run_time().strftime("%Y-%m-%d %H:%M:%S"),
             "project_root": str(self.project_root),
         }

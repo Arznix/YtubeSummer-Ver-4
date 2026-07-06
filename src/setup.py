@@ -41,6 +41,13 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
 
 # Optional: Database path (default: data/subscriptions_state.db)
 # DATABASE_PATH=data/subscriptions_state.db
+
+# Rate limiting: minimum seconds between YouTube requests (default: 15)
+# YOUTUBE_REQUEST_DELAY=15
+
+# Proxy rotation: comma-separated list of proxy URLs for IP rotation
+# Supports http://, https://, socks4://, socks5://
+# YOUTUBE_PROXY_LIST=http://proxy1:8080,http://proxy2:8080
 """
             self.env_example.write_text(example_content)
             print(f"Created {self.env_example}")
