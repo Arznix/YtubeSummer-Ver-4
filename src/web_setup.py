@@ -548,16 +548,10 @@ class WebSetupServer:
             token = keyring_updates.get("TELEGRAM_BOT_TOKEN")
             chat_id = keyring_updates.get("TELEGRAM_CHAT_ID")
             if token:
-                try:
-                    _keyring_set(KEYRING_SERVICE, "telegram_bot_token", str(token))
-                except RuntimeError:
-                    pass
+                _keyring_set(KEYRING_SERVICE, "telegram_bot_token", str(token))
                 creds["telegram_bot_token"] = token
             if chat_id:
-                try:
-                    _keyring_set(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
-                except RuntimeError:
-                    pass
+                _keyring_set(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
                 creds["telegram_chat_id"] = chat_id
             _write_credential_file(self.config_dir, creds)
 

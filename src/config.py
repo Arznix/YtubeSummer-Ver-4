@@ -15,6 +15,23 @@ except ImportError:
     HAS_KEYRING = False
     keyring = None
 
+# Probe once: True only if keyring is installed AND its backend works
+_KEYRING_AVAILABLE = None
+
+def _keyring_available() -> bool:
+    global _KEYRING_AVAILABLE
+    if _KEYRING_AVAILABLE is not None:
+        return _KEYRING_AVAILABLE
+    if not HAS_KEYRING:
+        _KEYRING_AVAILABLE = False
+        return False
+    try:
+        keyring.get_password("__probe__", "__probe__")
+        _KEYRING_AVAILABLE = True
+    except Exception:
+        _KEYRING_AVAILABLE = False
+    return _KEYRING_AVAILABLE
+
 
 KEYRING_SERVICE = "youtube-summarizer"
 APP_NAME = "ytube-summarizer"
@@ -43,32 +60,31 @@ def _write_credential_file(config_dir: Path, creds: dict) -> None:
 
 
 def _keyring_get(service: str, key: str) -> Optional[str]:
-    """Get a credential from the system keyring, falling back to the credential file."""
-    if not HAS_KEYRING:
+    """Get a credential from the system keyring. Returns None if keyring is
+    unavailable or the key doesn't exist (first run)."""
+    if not _keyring_available():
         return None
     try:
-        val = keyring.get_password(service, key)
-        if val:
-            return val
+        return keyring.get_password(service, key)
     except Exception:
-        pass
-    return None
+        return None
 
 
-def _keyring_set(service: str, key: str, value: str) -> None:
-    """Store a credential in the system keyring, falling back to the credential file."""
-    if HAS_KEYRING:
-        try:
-            keyring.set_password(service, key, value)
-            return
-        except Exception:
-            pass
-    raise RuntimeError(f"Failed to store credential '{key}': no suitable keyring backend available")
+def _keyring_set(service: str, key: str, value: str) -> bool:
+    """Store a credential in the system keyring. Returns True on success,
+    False if keyring is unavailable."""
+    if not _keyring_available():
+        return False
+    try:
+        keyring.set_password(service, key, value)
+        return True
+    except Exception:
+        return False
 
 
 def _keyring_delete(service: str, key: str) -> None:
-    """Delete a credential from the system keyring, falling back to the credential file."""
-    if not HAS_KEYRING:
+    """Delete a credential from the system keyring."""
+    if not _keyring_available():
         return
     try:
         keyring.delete_password(service, key)
@@ -275,10 +291,9 @@ class Config:
     @staticmethod
     def store_credentials(token: str, chat_id: str) -> None:
         config_dir = get_config_dir()
-        try:
-            _keyring_set(KEYRING_SERVICE, "telegram_bot_token", token)
-            _keyring_set(KEYRING_SERVICE, "telegram_chat_id", chat_id)
-        except RuntimeError:
+        ok = _keyring_set(KEYRING_SERVICE, "telegram_bot_token", token) and \
+             _keyring_set(KEYRING_SERVICE, "telegram_chat_id", chat_id)
+        if not ok:
             creds = _read_credential_file(config_dir)
             creds["telegram_bot_token"] = token
             creds["telegram_chat_id"] = chat_id
