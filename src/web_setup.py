@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv, set_key
 
 from setup import SetupWizard
-from config import KEYRING_SERVICE
+from config import KEYRING_SERVICE, get_config_dir
 import keyring
 
 
@@ -489,7 +489,9 @@ class WebSetupServer:
     def __init__(self, port=8080):
         self.port = port
         self.project_root = Path(__file__).parent.parent
-        self.env_file = self.project_root / ".env"
+        self.config_dir = get_config_dir()
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.env_file = self.config_dir / ".env"
         self._wizard = SetupWizard()
         # Generate auth token (printed to terminal, required for all API calls)
         self._auth_token = secrets.token_urlsafe(32)

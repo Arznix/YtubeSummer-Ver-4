@@ -12,7 +12,7 @@ import tempfile
 import os
 import json
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, PropertyMock
 from datetime import datetime, timedelta
 
 # Add src directory to path for imports
@@ -191,9 +191,17 @@ class TestStateManager(unittest.TestCase):
 
 class TestConfig(unittest.TestCase):
     """Tests for Config class."""
-    
+
+    @classmethod
+    def setUpClass(cls):
+        cls._keyring_patcher = patch("config.keyring.get_password", return_value=None)
+        cls._mock_keyring = cls._keyring_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._keyring_patcher.stop()
+
     def setUp(self):
-        """Set up test fixtures."""
         self.test_dir = tempfile.mkdtemp()
         self.env_file = Path(self.test_dir) / ".env"
         
