@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 import re
@@ -6,28 +7,38 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
+APP_NAME = "ytube-summarizer"
+
+
+def get_config_dir() -> Path:
+    if sys.platform == "win32":
+        return Path(os.environ.get("ProgramData", "C:\\ProgramData")) / APP_NAME
+    elif sys.platform == "darwin":
+        return Path("/Library/Application Support") / APP_NAME
+    else:
+        return Path("/etc") / APP_NAME
+
 
 class ConfigError(Exception):
-    """Configuration error exception."""
     pass
 
 
 class Config:
     """Configuration manager for the YouTube summarizer pipeline."""
-    
+
     MAX_CHANNELS = 100
-    
+
     def __init__(self, env_file: Optional[str] = None):
-        """
-        Initialize configuration.
-        
-        Args:
-            env_file: Path to .env file. If None, uses default .env in project root.
-        """
         self.project_root = Path(__file__).parent.parent
-        
+        self.config_dir = get_config_dir()
+
+        try:
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
+            self.config_dir = self.project_root
+
         if env_file is None:
-            env_file = self.project_root / ".env"
+            env_file = self.config_dir / ".env"
         
         # Load environment variables (override system env vars with .env values)
         load_dotenv(env_file, override=True)
@@ -51,7 +62,7 @@ class Config:
         if missing_vars:
             raise ConfigError(
                 f"Missing required environment variables: {', '.join(missing_vars)}\n"
-                f"Please copy .env.example to .env and fill in the values."
+                f"Please run setup.py or create a .env file at: {self.config_dir / '.env'}"
             )
         
         # Validate Telegram bot token format
@@ -101,9 +112,8 @@ class Config:
     
     @property
     def database_path(self) -> Path:
-        """Get database file path."""
-        db_dir = self.project_root / "data"
-        db_dir.mkdir(exist_ok=True)
+        db_dir = self.config_dir / "data"
+        db_dir.mkdir(parents=True, exist_ok=True)
         return db_dir / "subscriptions_state.db"
     
     @property
@@ -158,12 +168,13 @@ class Config:
             return now + timedelta(minutes=5)
     
     def get_all_config(self) -> dict:
-        """Get all configuration as dictionary (masks sensitive values)."""
         return {
             "telegram_bot_token": "***" if self.telegram_bot_token else "",
             "telegram_chat_id": self.telegram_chat_id,
             "ollama_host": self.ollama_host,
             "ollama_model": self.ollama_model,
+            "config_dir": str(self.config_dir),
+            "env_file": str(self.config_dir / ".env"),
             "database_path": str(self.database_path),
             "youtube_channel_ids": self.youtube_channel_ids,
             "channel_count": len(self.youtube_channel_ids),
@@ -171,7 +182,7 @@ class Config:
             "schedule_start_time": self.schedule_start_time or "Not set (defaults to now + 5 min)",
             "schedule_frequency_hours": self.schedule_frequency_hours,
             "next_run_time": self.get_next_run_time().strftime("%Y-%m-%d %H:%M:%S"),
-            "project_root": str(self.project_root)
+            "project_root": str(self.project_root),
         }
     
     def print_config(self) -> None:
@@ -185,13 +196,17 @@ class Config:
 def load_config(env_file: Optional[str] = None) -> Config:
     """
     Load and validate configuration.
-    
+
     Args:
-        env_file: Path to .env file. If None, uses default .env in project root.
-        
+        env_file: Path to .env file. If None, uses the OS-appropriate default:
+
+            Linux:   /etc/ytube-summarizer/.env
+            macOS:   /Library/Application Support/ytube-summarizer/.env
+            Windows: C:\\ProgramData\\ytube-summarizer\\.env
+
     Returns:
         Config object with validated configuration.
-        
+
     Raises:
         ConfigError: If configuration is invalid or missing required variables.
     """

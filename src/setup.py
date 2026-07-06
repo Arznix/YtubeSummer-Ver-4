@@ -17,12 +17,16 @@ class SetupWizard:
     """Interactive setup wizard for YouTube Summarizer."""
     
     def __init__(self):
-        """Initialize the setup wizard."""
         self.project_root = Path(__file__).parent.parent
-        self.env_file = self.project_root / ".env"
+        sys.path.insert(0, str(self.project_root / "src"))
+
+        from config import get_config_dir
+
+        self.config_dir = get_config_dir()
+        self.env_file = self.config_dir / ".env"
         self.env_example = self.project_root / ".env.example"
-        
-        # Ensure .env.example exists
+
+        self.config_dir.mkdir(parents=True, exist_ok=True)
         self._create_env_example()
     
     def _create_env_example(self) -> None:
@@ -499,16 +503,10 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         return config
     
     def save_configuration(self, config: dict) -> None:
-        """
-        Save configuration to .env file.
-        
-        Args:
-            config: Configuration dictionary
-        """
-        # Create or update .env file
+        self.config_dir.mkdir(parents=True, exist_ok=True)
         for key, value in config.items():
             set_key(str(self.env_file), key, value)
-        
+
         print(f"\nConfiguration saved to {self.env_file}")
     
     def test_configuration(self) -> bool:
@@ -556,9 +554,8 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         print("Press Enter to accept default values (shown in brackets).")
         print()
         
-        # Check if .env already exists
         if self.env_file.exists():
-            response = input("Configuration file already exists. Overwrite? (y/N): ").strip().lower()
+            response = input(f"Configuration already exists at {self.env_file}. Overwrite? (y/N): ").strip().lower()
             if response != 'y':
                 print("Setup cancelled.")
                 return
