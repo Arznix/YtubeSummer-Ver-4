@@ -229,7 +229,7 @@ class TestConfig(unittest.TestCase):
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_CHAT_ID=123456789
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
+OLLAMA_MODEL=qwen2.5:1.5b
 YOUTUBE_CHANNEL_IDS=UC-lHJZR3Gqxm24_Vd_AJ5Yw,UCaXkpc6S7t4Kl3M3bX8m6Bw
 """
         self._set_env_vars(env_content)
@@ -240,7 +240,7 @@ YOUTUBE_CHANNEL_IDS=UC-lHJZR3Gqxm24_Vd_AJ5Yw,UCaXkpc6S7t4Kl3M3bX8m6Bw
         self.assertEqual(config.telegram_bot_token, "123456789:ABCdefGHIjklMNOpqrsTUVwxyz")
         self.assertEqual(config.telegram_chat_id, "123456789")
         self.assertEqual(config.ollama_host, "http://localhost:11434")
-        self.assertEqual(config.ollama_model, "qwen2.5:7b")
+        self.assertEqual(config.ollama_model, "qwen2.5:1.5b")
         self.assertEqual(len(config.youtube_channel_ids), 2)
     
     def test_missing_required_vars(self):
@@ -289,7 +289,7 @@ OLLAMA_HOST=invalid-url
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 TELEGRAM_CHAT_ID=123456789
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
+OLLAMA_MODEL=qwen2.5:1.5b
 YOUTUBE_CHANNEL_IDS=UC-lHJZR3Gqxm24_Vd_AJ5Yw
 """
         self._set_env_vars(env_content)
@@ -400,7 +400,7 @@ class TestOllamaClient(unittest.TestCase):
         mock_response = Mock()
         mock_response.json.return_value = {
             "models": [
-                {"name": "qwen2.5:7b"},
+                {"name": "qwen2.5:1.5b"},
                 {"name": "llama2"}
             ]
         }

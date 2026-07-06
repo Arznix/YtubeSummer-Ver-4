@@ -29,7 +29,7 @@ A locally hosted, privacy-focused YouTube subscription summarizer that monitors 
 
 ### 1. Prerequisites
 - Python 3.8+
-- Ollama with qwen2.5:7b model
+- Ollama with qwen2.5:1.5b model
 - Telegram bot token and chat ID
 - YouTube channel IDs
 
@@ -46,10 +46,15 @@ cd youtube-summarizer
 pip install -r requirements.txt
 
 # Run setup wizard
-python src/setup.py
+python src/setup.py           # Terminal wizard
+python src/setup.py --web     # Browser-based setup (recommended)
+                              # The browser will be launched by the python code
+                              # but it will take a while to initialize so be patient.
 ```
 
 ### 3. Configuration
+
+You can also use the browser based interface described in the file "browser_setup.md". It uses a graphic interface to guide you through the setup and you avoid having to do the sets in this section.
 
 Copy `.env.example` to `.env` and fill in your credentials:
 
@@ -60,7 +65,7 @@ TELEGRAM_CHAT_ID=your_chat_id_here
 
 # Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
+OLLAMA_MODEL=qwen2.5:1.5b
 
 # YouTube Channel IDs (comma-separated, up to 100 channels)
 YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2,channel_id_3
@@ -108,7 +113,8 @@ youtube-summarizer/
 │   ├── ollama_client.py         # Ollama API client
 │   ├── mcp_server_notifier.py   # Telegram notifications
 │   ├── agent_orchestrator.py    # Main application logic
-│   └── setup.py                 # Interactive setup wizard
+│   ├── setup.py                 # Interactive setup wizard
+│   └── web_setup.py             # Browser-based setup server
 ├── skills/                       # Agent Skills (reusable components)
 │   ├── youtube-rss-reader/      # YouTube RSS parsing skill
 │   └── telegram-notifier/       # Telegram notification skill
@@ -143,8 +149,9 @@ See `skills/*/SKILL.md` for detailed documentation.
 |----------|----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Yes | Telegram bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | Yes | Your Telegram chat ID |
+| `TELEGRAM_BOT_USERNAME` | No | Your Telegram bot username (e.g., @mybot) |
 | `OLLAMA_HOST` | Yes | Ollama server URL (default: http://localhost:11434) |
-| `OLLAMA_MODEL` | No | Model name (default: qwen2.5:7b) |
+| `OLLAMA_MODEL` | No | Model name (default: qwen2.5:1.5b) |
 | `YOUTUBE_CHANNEL_IDS` | Yes | Comma-separated YouTube channel IDs (up to 100) |
 | `SCHEDULE_START_TIME` | No | Start time in HH:MM format (24-hour). Defaults to now + 5 min |
 | `SCHEDULE_FREQUENCY_HOURS` | No | Check frequency in hours (1-24, default: 6) |
@@ -179,6 +186,9 @@ SCHEDULE_FREQUENCY_HOURS=12
 - **Prompt Injection Defense**: System prompt anchoring for LLM
 - **Resource Bounds**: Transcript truncation at 12,000 characters
 - **Input Validation**: Sanitization of external data
+- **Web Setup Authentication**: Auth token required for all API requests
+- **Web Setup CSRF Protection**: POST requests require CSRF token
+- **Localhost Binding**: Web setup server bound to 127.0.0.1 only
 
 ## Testing
 
@@ -188,6 +198,9 @@ python test_agent.py
 
 # Run specific test class
 python -m unittest test_agent.TestStateManager
+
+# Run web setup tests
+python -m pytest test_web_setup.py test_web_setup_api.py -v
 
 # Run with coverage
 pip install pytest-cov

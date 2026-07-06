@@ -8,7 +8,7 @@ import time
 class OllamaClient:
     """Ollama API client for local LLM summarization."""
     
-    def __init__(self, host: str = "http://localhost:11434", model: str = "qwen2.5:7b"):
+    def __init__(self, host: str = "http://localhost:11434", model: str = "qwen2.5:1.5b"):
         """
         Initialize Ollama client.
         

@@ -138,7 +138,7 @@ After installing Ollama, download the Qwen 2.5 model:
 Open Command Prompt/Terminal and run:
 
 ```bash
-ollama pull qwen2.5-coder:1.5b
+ollama pull qwen2.5:1.5b
 ```
 
 This will download approximately 1 GB. Wait for completion.
@@ -149,7 +149,7 @@ This will download approximately 1 GB. Wait for completion.
 ollama list
 ```
 
-You should see `qwen2.5-coder:1.5b` in the list.
+You should see `qwen2.5:1.5b` in the list.
 
 ---
 
@@ -264,7 +264,7 @@ TELEGRAM_CHAT_ID=YOUR_CHAT_ID_HERE
 
 # Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5-coder:1.5b
+OLLAMA_MODEL=qwen2.5:1.5b
 
 # YouTube Channel IDs (will add in next step)
 YOUTUBE_CHANNEL_IDS=
@@ -276,6 +276,30 @@ SCHEDULE_FREQUENCY_HOURS=6
 Replace:
 - `YOUR_BOT_TOKEN_HERE` with your Telegram bot token
 - `YOUR_CHAT_ID_HERE` with your Telegram chat ID
+
+### Option 3: Web Browser Setup (Recommended)
+
+The web setup provides a visual interface for configuring your system:
+
+```bash
+# Start web setup server
+python src/setup.py --web
+
+# Or specify a custom port
+python src/setup.py --web --port 8080
+```
+
+The server will:
+1. Print an authentication token to the terminal
+2. Open your browser to `http://127.0.0.1:8080`
+3. Display the setup page (auth token is embedded automatically)
+
+**Security features:**
+- Server bound to localhost only (not network accessible)
+- Auth token required for all API requests
+- CSRF protection for all POST requests
+- Bot token masked in browser UI
+- All requests logged to `web_setup.log`
 
 ---
 
@@ -308,6 +332,20 @@ python src/setup.py
 ```
 
 Follow the prompts to add channels.
+
+### Method 4: Web UI
+
+Use the browser-based setup for a visual channel management interface:
+
+```bash
+python src/setup.py --web
+```
+
+The web UI allows you to:
+- Add channels by URL, ID, or handle
+- Remove channels with one click
+- View RSS URLs and validation status
+- Save configuration with a single button
 
 ### Example: Adding Multiple Channels
 
@@ -478,7 +516,7 @@ python src/agent_orchestrator.py --status
 
 **Solution**:
 ```bash
-ollama pull qwen2.5-coder:1.5b
+ollama pull qwen2.5:1.5b
 ollama list
 ```
 
@@ -535,11 +573,17 @@ python src/agent_orchestrator.py
 # Add channel
 python extract_channel_id.py https://www.youtube.com/@channelname
 
-# Setup wizard
+# Setup wizard (terminal)
 python src/setup.py
+
+# Web setup (browser-based, recommended)
+python src/setup.py --web
 
 # Run tests
 python test_agent.py
+
+# Run web setup tests
+python -m pytest test_web_setup.py test_web_setup_api.py -v
 ```
 
 ### Configuration File Locations
@@ -557,7 +601,7 @@ python test_agent.py
 | `TELEGRAM_BOT_TOKEN` | Yes | Telegram bot token |
 | `TELEGRAM_CHAT_ID` | Yes | Your Telegram chat ID |
 | `OLLAMA_HOST` | Yes | Ollama server URL |
-| `OLLAMA_MODEL` | No | AI model name (default: qwen2.5-coder:1.5b) |
+| `OLLAMA_MODEL` | No | AI model name (default: qwen2.5:1.5b) |
 | `YOUTUBE_CHANNEL_IDS` | Yes | Comma-separated channel IDs |
 | `SCHEDULE_START_TIME` | No | Start time (HH:MM format) |
 | `SCHEDULE_FREQUENCY_HOURS` | No | Check frequency (1-24 hours) |

@@ -23,7 +23,7 @@ pip install -r requirements.txt
 ### Pull Required Model
 ```bash
 # Pull the Qwen 2.5 7B model
-ollama pull qwen2.5:7b
+ollama pull qwen2.5:1.5b
 
 # Verify installation
 ollama list
@@ -35,12 +35,12 @@ ollama list
 curl http://localhost:11434/api/tags
 
 # Test model availability
-ollama run qwen2.5:7b "Hello, world!"
+ollama run qwen2.5:1.5b "Hello, world!"
 ```
 
 ### Ollama Configuration
 - Default host: `http://localhost:11434`
-- Default model: `qwen2.5:7b`
+- Default model: `qwen2.5:1.5b`
 - API documentation: [https://docs.ollama.com/api](https://docs.ollama.com/api)
 
 ## 3. Telegram Bot Setup
@@ -112,7 +112,7 @@ TELEGRAM_CHAT_ID=your_chat_id_here
 
 # Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
+OLLAMA_MODEL=qwen2.5:1.5b
 
 # YouTube Channel IDs (comma-separated)
 YOUTUBE_CHANNEL_IDS=UC-lHJZR3Gqxm24_Vd_AJ5Yw,UCHnyfMqiRRG1u-2MsSQLbXA
@@ -122,12 +122,19 @@ YOUTUBE_CHANNEL_IDS=UC-lHJZR3Gqxm24_Vd_AJ5Yw,UCHnyfMqiRRG1u-2MsSQLbXA
 
 ### Run Setup Wizard
 ```bash
+# Terminal wizard
 python src/setup.py
+
+# Browser-based setup (recommended)
+python src/setup.py --web
 ```
 
 ### Run Tests
 ```bash
 python test_agent.py
+
+# Web setup tests
+python -m pytest test_web_setup.py test_web_setup_api.py -v
 ```
 
 ### Test Individual Components
@@ -209,10 +216,17 @@ LOG_LEVEL=DEBUG
 - Telegram API uses HTTPS
 - YouTube RSS is public data
 
+### Web Setup Security
+- Server binds to localhost only (127.0.0.1)
+- Auth token required for all API requests
+- CSRF protection for all POST requests
+- Bot token masked in browser UI
+- All requests logged to `web_setup.log`
+
 ## 9. Next Steps
 
 Once prerequisites are set up:
-1. Run the setup wizard: `python src/setup.py`
+1. Run the setup wizard: `python src/setup.py` or `python src/setup.py --web`
 2. Test the pipeline: `python src/agent_orchestrator.py --once`
 3. Set up as background service: `python src/agent_orchestrator.py`
 
