@@ -15,22 +15,43 @@ except ImportError:
     HAS_KEYRING = False
     keyring = None
 
-# Probe once: True only if keyring is installed AND its backend works
 _KEYRING_AVAILABLE = None
 
-def _keyring_available() -> bool:
-    global _KEYRING_AVAILABLE
-    if _KEYRING_AVAILABLE is not None:
-        return _KEYRING_AVAILABLE
-    if not HAS_KEYRING:
-        _KEYRING_AVAILABLE = False
-        return False
+def _get_flags_path() -> Path:
+    return get_config_dir() / "flags.txt"
+
+def _read_flag(flag_name: str) -> str:
+    flags_path = _get_flags_path()
+    if not flags_path.exists():
+        return "0"
     try:
-        keyring.get_password("__probe__", "__probe__")
-        _KEYRING_AVAILABLE = True
-    except Exception:
-        _KEYRING_AVAILABLE = False
-    return _KEYRING_AVAILABLE
+        for line in flags_path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith(flag_name + "="):
+                return line.split("=", 1)[1]
+    except (OSError, UnicodeDecodeError):
+        pass
+    return "0"
+
+def _write_flag(flag_name: str, value: str) -> None:
+    flags_path = _get_flags_path()
+    try:
+        flags_path.parent.mkdir(parents=True, exist_ok=True)
+        if flags_path.exists():
+            lines = flags_path.read_text().splitlines()
+        else:
+            lines = []
+        found = False
+        for i, line in enumerate(lines):
+            if line.strip().startswith(flag_name + "="):
+                lines[i] = f"{flag_name}={value}"
+                found = True
+                break
+        if not found:
+            lines.append(f"{flag_name}={value}")
+        flags_path.write_text("\n".join(lines) + "\n")
+    except (OSError, UnicodeDecodeError):
+        pass
 
 
 KEYRING_SERVICE = "youtube-summarizer"
@@ -59,9 +80,28 @@ def _write_credential_file(config_dir: Path, creds: dict) -> None:
         cred_file.chmod(0o600)
 
 
+def _keyring_available() -> bool:
+    global _KEYRING_AVAILABLE
+    if _KEYRING_AVAILABLE is not None:
+        return _KEYRING_AVAILABLE
+    if not HAS_KEYRING:
+        _KEYRING_AVAILABLE = False
+        return False
+    ring_flg = _read_flag("ring-flg")
+    if ring_flg != "1":
+        _KEYRING_AVAILABLE = False
+        return False
+    try:
+        keyring.get_password("__probe__", "__probe__")
+        _KEYRING_AVAILABLE = True
+    except Exception:
+        _KEYRING_AVAILABLE = False
+    return _KEYRING_AVAILABLE
+
+
 def _keyring_get(service: str, key: str) -> Optional[str]:
     """Get a credential from the system keyring. Returns None if keyring is
-    unavailable or the key doesn't exist (first run)."""
+    unavailable or no credentials have been stored yet."""
     if not _keyring_available():
         return None
     try:
@@ -71,12 +111,15 @@ def _keyring_get(service: str, key: str) -> Optional[str]:
 
 
 def _keyring_set(service: str, key: str, value: str) -> bool:
-    """Store a credential in the system keyring. Returns True on success,
-    False if keyring is unavailable."""
-    if not _keyring_available():
+    """Store a credential in the system keyring. Sets ring-flg=1 on success.
+    Returns True on success, False if keyring is unavailable."""
+    if not HAS_KEYRING:
         return False
     try:
         keyring.set_password(service, key, value)
+        _write_flag("ring-flg", "1")
+        global _KEYRING_AVAILABLE
+        _KEYRING_AVAILABLE = True
         return True
     except Exception:
         return False
