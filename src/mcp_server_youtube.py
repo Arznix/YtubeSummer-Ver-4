@@ -23,8 +23,9 @@ USER_AGENTS = [
 
 
 class RateLimiter:
-    def __init__(self, min_interval: float = 15.0):
+    def __init__(self, min_interval: float = 60.0, max_interval: float = 240.0):
         self.min_interval = min_interval
+        self.max_interval = max_interval
         self._last_request = 0.0
         self._lock = threading.Lock()
 
@@ -32,8 +33,9 @@ class RateLimiter:
         with self._lock:
             now = time.time()
             elapsed = now - self._last_request
-            if elapsed < self.min_interval:
-                wait = self.min_interval - elapsed
+            target = random.uniform(self.min_interval, self.max_interval)
+            if elapsed < target:
+                wait = target - elapsed
                 time.sleep(wait)
             self._last_request = time.time()
 
@@ -53,19 +55,21 @@ class ProxyRotator:
 class YouTubeMCPServer:
     """YouTube MCP Server for RSS feed parsing and transcript extraction."""
     
-    def __init__(self, timeout: int = 30, request_delay: float = 60.0, proxy_list: Optional[List[str]] = None):
+    def __init__(self, timeout: int = 30, request_delay_min: float = 60.0, request_delay_max: float = 240.0, proxy_list: Optional[List[str]] = None):
         """
         Initialize YouTube MCP Server.
 
         Args:
             timeout: HTTP request timeout in seconds
-            request_delay: Minimum seconds between YouTube requests
+            request_delay_min: Minimum seconds between YouTube requests
+            request_delay_max: Maximum seconds between YouTube requests (random jitter)
             proxy_list: List of proxy URLs to rotate through
         """
         self.timeout = timeout
-        self.request_delay = request_delay
+        self.request_delay_min = request_delay_min
+        self.request_delay_max = request_delay_max
         self.logger = logging.getLogger(__name__)
-        self.rate_limiter = RateLimiter(request_delay)
+        self.rate_limiter = RateLimiter(request_delay_min, request_delay_max)
         self.proxy_rotator = ProxyRotator(proxy_list)
         self._ua_cycle = itertools.cycle(USER_AGENTS)
         self._proxy_fallback = False

@@ -26,7 +26,8 @@ class AgentOrchestrator:
         self.config = config or load_config()
         self.state_manager = StateManager(self.config.database_path)
         self.youtube_server = YouTubeMCPServer(
-            request_delay=self.config.youtube_request_delay,
+            request_delay_min=self.config.youtube_request_delay_min,
+            request_delay_max=self.config.youtube_request_delay_max,
             proxy_list=self.config.youtube_proxy_list,
         )
         self.ollama_client = OllamaClient(self.config.ollama_host, self.config.ollama_model)
