@@ -1,4 +1,6 @@
+import json
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 import re
@@ -10,6 +12,59 @@ import keyring
 
 KEYRING_SERVICE = "youtube-summarizer"
 APP_NAME = "ytube-summarizer"
+
+
+def _get_credential_file(config_dir: Path) -> Path:
+    return config_dir / ".credentials.json"
+
+
+def _read_credential_file(config_dir: Path) -> dict:
+    cred_file = _get_credential_file(config_dir)
+    if cred_file.exists():
+        try:
+            return json.loads(cred_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _write_credential_file(config_dir: Path, creds: dict) -> None:
+    cred_file = _get_credential_file(config_dir)
+    cred_file.write_text(json.dumps(creds, indent=2))
+    # Restrict permissions on Unix-like systems
+    if sys.platform != "win32":
+        cred_file.chmod(0o600)
+
+
+def _keyring_get(service: str, key: str) -> Optional[str]:
+    """Get a credential from the system keyring, falling back to the credential file."""
+    try:
+        val = keyring.get_password(service, key)
+        if val:
+            return val
+    except Exception:
+        pass
+    return None
+
+
+def _keyring_set(service: str, key: str, value: str) -> None:
+    """Store a credential in the system keyring, falling back to the credential file."""
+    try:
+        keyring.set_password(service, key, value)
+        return
+    except Exception:
+        pass
+    raise RuntimeError(f"Failed to store credential '{key}': no suitable keyring backend available")
+
+
+def _keyring_delete(service: str, key: str) -> None:
+    """Delete a credential from the system keyring, falling back to the credential file."""
+    try:
+        keyring.delete_password(service, key)
+    except keyring.errors.PasswordDeleteError:
+        pass
+    except Exception:
+        pass
 
 
 def get_config_dir() -> Path:
@@ -39,11 +94,15 @@ class Config:
         self._validate_config()
 
     def _validate_config(self) -> None:
-        required_vars = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "OLLAMA_HOST"]
+        required_vars = {
+            "TELEGRAM_BOT_TOKEN": self.telegram_bot_token,
+            "TELEGRAM_CHAT_ID": self.telegram_chat_id,
+            "OLLAMA_HOST": os.getenv("OLLAMA_HOST"),
+        }
 
         missing_vars = []
-        for var in required_vars:
-            if not os.getenv(var):
+        for var, value in required_vars.items():
+            if not value:
                 missing_vars.append(var)
 
         if missing_vars:
@@ -52,7 +111,7 @@ class Config:
                 f"Please run setup.py or create a .env file at: {self.config_dir / '.env'}"
             )
 
-        telegram_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        telegram_token = self.telegram_bot_token
         if not re.match(r'^\d+:[A-Za-z0-9_-]+$', telegram_token):
             raise ConfigError("Invalid Telegram bot token format")
 
@@ -74,16 +133,22 @@ class Config:
 
     @property
     def telegram_bot_token(self) -> str:
-        token = keyring.get_password(KEYRING_SERVICE, "telegram_bot_token")
+        token = _keyring_get(KEYRING_SERVICE, "telegram_bot_token")
         if token:
             return token
+        creds = _read_credential_file(self.config_dir)
+        if "telegram_bot_token" in creds:
+            return creds["telegram_bot_token"]
         return os.getenv("TELEGRAM_BOT_TOKEN", "")
 
     @property
     def telegram_chat_id(self) -> str:
-        chat_id = keyring.get_password(KEYRING_SERVICE, "telegram_chat_id")
+        chat_id = _keyring_get(KEYRING_SERVICE, "telegram_chat_id")
         if chat_id:
             return chat_id
+        creds = _read_credential_file(self.config_dir)
+        if "telegram_chat_id" in creds:
+            return creds["telegram_chat_id"]
         return os.getenv("TELEGRAM_CHAT_ID", "")
 
     @property
@@ -162,19 +227,27 @@ class Config:
 
     @staticmethod
     def store_credentials(token: str, chat_id: str) -> None:
-        keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", token)
-        keyring.set_password(KEYRING_SERVICE, "telegram_chat_id", chat_id)
+        config_dir = get_config_dir()
+        try:
+            _keyring_set(KEYRING_SERVICE, "telegram_bot_token", token)
+            _keyring_set(KEYRING_SERVICE, "telegram_chat_id", chat_id)
+        except RuntimeError:
+            creds = _read_credential_file(config_dir)
+            creds["telegram_bot_token"] = token
+            creds["telegram_chat_id"] = chat_id
+            _write_credential_file(config_dir, creds)
 
     @staticmethod
     def clear_credentials() -> None:
-        try:
-            keyring.delete_password(KEYRING_SERVICE, "telegram_bot_token")
-        except keyring.errors.PasswordDeleteError:
-            pass
-        try:
-            keyring.delete_password(KEYRING_SERVICE, "telegram_chat_id")
-        except keyring.errors.PasswordDeleteError:
-            pass
+        config_dir = get_config_dir()
+        _keyring_delete(KEYRING_SERVICE, "telegram_bot_token")
+        _keyring_delete(KEYRING_SERVICE, "telegram_chat_id")
+        cred_file = _get_credential_file(config_dir)
+        if cred_file.exists():
+            try:
+                cred_file.unlink()
+            except OSError:
+                pass
 
 
 def load_config(env_file: Optional[str] = None) -> Config:
