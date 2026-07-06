@@ -14,7 +14,7 @@ from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv, set_key
 
 from setup import SetupWizard
-from config import KEYRING_SERVICE, get_config_dir
+from config import KEYRING_SERVICE, get_config_dir, _read_credential_file, _write_credential_file
 import keyring
 
 
@@ -543,14 +543,24 @@ class WebSetupServer:
         for key in sensitive_keys:
             os.environ.pop(key, None)
 
-        # Store sensitive credentials in OS keychain
+        # Store sensitive credentials in OS keychain + fallback credential file
         if "TELEGRAM_BOT_TOKEN" in keyring_updates or "TELEGRAM_CHAT_ID" in keyring_updates:
+            creds = _read_credential_file(self.config_dir)
             token = keyring_updates.get("TELEGRAM_BOT_TOKEN")
             chat_id = keyring_updates.get("TELEGRAM_CHAT_ID")
             if token:
-                keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", str(token))
+                try:
+                    keyring.set_password(KEYRING_SERVICE, "telegram_bot_token", str(token))
+                except Exception:
+                    pass
+                creds["telegram_bot_token"] = token
             if chat_id:
-                keyring.set_password(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
+                try:
+                    keyring.set_password(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
+                except Exception:
+                    pass
+                creds["telegram_chat_id"] = chat_id
+            _write_credential_file(self.config_dir, creds)
 
         # Store non-sensitive config in .env
         for key, value in env_updates.items():

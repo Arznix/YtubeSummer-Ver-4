@@ -107,8 +107,8 @@ class Config:
 
         if missing_vars:
             raise ConfigError(
-                f"Missing required environment variables: {', '.join(missing_vars)}\n"
-                f"Please run setup.py or create a .env file at: {self.config_dir / '.env'}"
+                f"Missing required configuration: {', '.join(missing_vars)}\n"
+                f"Please run setup.py to store credentials in the system keyring."
             )
 
         telegram_token = self.telegram_bot_token
