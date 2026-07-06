@@ -42,8 +42,9 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
 # Optional: Database path (default: data/subscriptions_state.db)
 # DATABASE_PATH=data/subscriptions_state.db
 
-# Rate limiting: minimum seconds between YouTube requests (default: 15)
-# YOUTUBE_REQUEST_DELAY=15
+# Rate limiting: minimum seconds between YouTube requests (default: 60)
+# Proxies are used as a fallback only when rate limiting fails
+# YOUTUBE_REQUEST_DELAY=60
 
 # Proxy rotation: comma-separated list of proxy URLs for IP rotation
 # Supports http://, https://, socks4://, socks5://

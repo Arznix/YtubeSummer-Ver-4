@@ -53,7 +53,7 @@ class ProxyRotator:
 class YouTubeMCPServer:
     """YouTube MCP Server for RSS feed parsing and transcript extraction."""
     
-    def __init__(self, timeout: int = 30, request_delay: float = 15.0, proxy_list: Optional[List[str]] = None):
+    def __init__(self, timeout: int = 30, request_delay: float = 60.0, proxy_list: Optional[List[str]] = None):
         """
         Initialize YouTube MCP Server.
 
@@ -68,6 +68,7 @@ class YouTubeMCPServer:
         self.rate_limiter = RateLimiter(request_delay)
         self.proxy_rotator = ProxyRotator(proxy_list)
         self._ua_cycle = itertools.cycle(USER_AGENTS)
+        self._proxy_fallback = False
 
         # YouTube RSS feed base URL
         self.rss_base_url = "https://www.youtube.com/feeds/videos.xml"
@@ -84,47 +85,69 @@ class YouTubeMCPServer:
         self.rate_limiter.wait()
         if "headers" not in kwargs:
             kwargs["headers"] = self._get_headers()
-        proxies = self.proxy_rotator.get_proxies()
-        if proxies:
-            kwargs["proxies"] = proxies
         if "timeout" not in kwargs:
             kwargs["timeout"] = self.timeout
 
         max_retries = 3
-        for attempt in range(max_retries):
+        attempt = 0
+        has_proxies = bool(self.proxy_rotator._proxies)
+        local_kwargs = kwargs.copy()
+
+        while attempt < max_retries:
             try:
+                proxies = None
+                if self._proxy_fallback:
+                    proxies = self.proxy_rotator.get_proxies()
+                if proxies:
+                    local_kwargs["proxies"] = proxies
+                elif "proxies" in local_kwargs:
+                    local_kwargs.pop("proxies", None)
+
                 if method == "GET":
-                    response = requests.get(url, **kwargs)
+                    response = requests.get(url, **local_kwargs)
                 elif method == "POST":
-                    response = requests.post(url, **kwargs)
+                    response = requests.post(url, **local_kwargs)
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
 
                 if response.status_code == 429:
-                    retry_after = int(response.headers.get("Retry-After", 10))
+                    retry_after = int(response.headers.get("Retry-After", 30))
                     self.logger.warning(
                         f"Rate limited (429) on {url}. Waiting {retry_after}s "
                         f"(attempt {attempt+1}/{max_retries})"
                     )
-                    time.sleep(retry_after)
-                    continue
+                    attempt += 1
+                    if attempt < max_retries:
+                        time.sleep(retry_after)
+                        continue
+                    if not self._proxy_fallback and has_proxies:
+                        self._proxy_fallback = True
+                        attempt = 0
+                        self.logger.info("Falling back to proxy rotation after repeated 429s")
+                        continue
+                    raise RuntimeError(f"Rate limited after {max_retries} attempts on {url}")
 
                 response.raise_for_status()
                 return response
 
             except (requests.RequestException, ConnectionError) as e:
-                if attempt < max_retries - 1:
-                    backoff = (2 ** attempt) * 5 + random.uniform(0, 2)
+                attempt += 1
+                if attempt < max_retries:
+                    backoff = (2 ** (attempt - 1)) * 5 + random.uniform(0, 2)
                     self.logger.warning(
                         f"Request failed ({e}). Retrying in {backoff:.0f}s "
-                        f"(attempt {attempt+1}/{max_retries})"
+                        f"(attempt {attempt}/{max_retries})"
                     )
                     time.sleep(backoff)
+                elif not self._proxy_fallback and has_proxies:
+                    self._proxy_fallback = True
+                    attempt = 0
+                    self.logger.info(f"Falling back to proxy rotation after: {e}")
                 else:
-                    self.logger.error(f"Request to {url} failed after {max_retries} attempts: {e}")
+                    self.logger.error(f"Request to {url} failed after all attempts: {e}")
                     raise
 
-        raise RuntimeError(f"Failed to fetch {url} after {max_retries} attempts")
+        raise RuntimeError(f"Failed to fetch {url} after all attempts")
 
     def fetch_latest_videos_from_rss(self, channel_id: str) -> List[Dict[str, Any]]:
         """
@@ -275,28 +298,51 @@ class YouTubeMCPServer:
 
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            self.logger.error("youtube-transcript-api not installed. Install with: pip install youtube-transcript-api")
+            return None
 
-            self.logger.info(f"Fetching transcript for video: {video_id}")
+        self.logger.info(f"Fetching transcript for video: {video_id}")
+        self.rate_limiter.wait()
 
-            # Rate-limit before transcript API call
-            self.rate_limiter.wait()
+        has_proxies = bool(self.proxy_rotator._proxies)
+        _saved_http = None
+        _saved_https = None
 
-            # Apply proxy via env vars for library compatibility
-            proxies = self.proxy_rotator.get_proxies()
-            old_http = os.environ.pop("HTTP_PROXY", None)
-            old_https = os.environ.pop("HTTPS_PROXY", None)
-            if proxies:
-                if proxies.get("http"):
-                    os.environ["HTTP_PROXY"] = proxies["http"]
-                if proxies.get("https"):
-                    os.environ["HTTPS_PROXY"] = proxies["https"]
+        def _apply_proxy_env():
+            nonlocal _saved_http, _saved_https
+            _saved_http = os.environ.pop("HTTP_PROXY", None)
+            _saved_https = os.environ.pop("HTTPS_PROXY", None)
+            if self._proxy_fallback:
+                proxies = self.proxy_rotator.get_proxies()
+                if proxies:
+                    if proxies.get("http"):
+                        os.environ["HTTP_PROXY"] = proxies["http"]
+                    if proxies.get("https"):
+                        os.environ["HTTPS_PROXY"] = proxies["https"]
 
-            def _do_fetch(api, vid, langs):
-                transcript = api.fetch(vid, languages=langs)
-                return ' '.join([snippet.text for snippet in transcript.snippets])
+        def _restore_proxy_env():
+            nonlocal _saved_http, _saved_https
+            if _saved_http is not None:
+                os.environ["HTTP_PROXY"] = _saved_http
+            elif "HTTP_PROXY" in os.environ:
+                os.environ.pop("HTTP_PROXY", None)
+            if _saved_https is not None:
+                os.environ["HTTPS_PROXY"] = _saved_https
+            elif "HTTPS_PROXY" in os.environ:
+                os.environ.pop("HTTPS_PROXY", None)
+
+        def _do_fetch(api, vid, langs):
+            transcript = api.fetch(vid, languages=langs)
+            return ' '.join([snippet.text for snippet in transcript.snippets])
+
+        try:
+            _apply_proxy_env()
 
             max_retries = 3
-            for attempt in range(max_retries):
+            attempt = 0
+
+            while attempt < max_retries:
                 try:
                     ytt_api = YouTubeTranscriptApi()
                     transcript_text = _do_fetch(ytt_api, video_id, languages)
@@ -306,29 +352,32 @@ class YouTubeMCPServer:
                 except Exception as e:
                     error_str = str(e).lower()
                     is_rate_limit = "429" in error_str or "too many requests" in error_str
+                    attempt += 1
 
-                    if is_rate_limit and attempt < max_retries - 1:
-                        backoff = (2 ** attempt) * 10 + random.uniform(0, 5)
+                    if attempt < max_retries:
+                        backoff = (2 ** (attempt - 1)) * 10 + random.uniform(0, 5)
+                        reason = "rate limited" if is_rate_limit else str(e)
                         self.logger.warning(
-                            f"Transcript rate limited for {video_id}. "
-                            f"Retrying in {backoff:.0f}s (attempt {attempt+1}/{max_retries})"
+                            f"Transcript {reason} for {video_id}. "
+                            f"Retrying in {backoff:.0f}s (attempt {attempt}/{max_retries})"
                         )
                         time.sleep(backoff)
                         continue
 
-                    if attempt < max_retries - 1:
-                        backoff = (2 ** attempt) * 5 + random.uniform(0, 2)
-                        self.logger.warning(
-                            f"Transcript fetch failed for {video_id}: {e}. "
-                            f"Retrying in {backoff:.0f}s (attempt {attempt+1}/{max_retries})"
-                        )
-                        time.sleep(backoff)
+                    # All retries exhausted — fall back to proxies if available
+                    if not self._proxy_fallback and has_proxies:
+                        self._proxy_fallback = True
+                        attempt = 0
+                        self.logger.info(f"Falling back to proxy rotation for transcript: {video_id}")
+                        _restore_proxy_env()
+                        _apply_proxy_env()
                         continue
 
-                    self.logger.warning(f"Transcript fetch failed for {video_id} after {max_retries} attempts: {e}")
+                    self.logger.warning(f"Transcript fetch failed for {video_id} after all attempts: {e}")
 
                     # Final fallback: try listing available transcripts
                     try:
+                        ytt_api = YouTubeTranscriptApi()
                         transcript_list = ytt_api.list(video_id)
                         for transcript in transcript_list:
                             try:
@@ -346,22 +395,11 @@ class YouTubeMCPServer:
 
             return None
 
-        except ImportError:
-            self.logger.error("youtube-transcript-api not installed. Install with: pip install youtube-transcript-api")
-            return None
         except Exception as e:
             self.logger.error(f"Unexpected error fetching transcript for video {video_id}: {e}")
             return None
         finally:
-            # Restore proxy env vars
-            if old_http is not None:
-                os.environ["HTTP_PROXY"] = old_http
-            else:
-                os.environ.pop("HTTP_PROXY", None)
-            if old_https is not None:
-                os.environ["HTTPS_PROXY"] = old_https
-            else:
-                os.environ.pop("HTTPS_PROXY", None)
+            _restore_proxy_env()
     
     def get_video_metadata(self, video_id: str) -> Optional[Dict[str, Any]]:
         """

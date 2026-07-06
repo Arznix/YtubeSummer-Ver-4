@@ -200,9 +200,9 @@ class Config:
     @property
     def youtube_request_delay(self) -> float:
         try:
-            return float(os.getenv("YOUTUBE_REQUEST_DELAY", "15"))
+            return float(os.getenv("YOUTUBE_REQUEST_DELAY", "60"))
         except ValueError:
-            return 15.0
+            return 60.0
 
     @property
     def youtube_proxy_list(self) -> list:

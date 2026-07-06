@@ -155,6 +155,8 @@ See `skills/*/SKILL.md` for detailed documentation.
 | `YOUTUBE_CHANNEL_IDS` | Yes | Comma-separated YouTube channel IDs (up to 100) |
 | `SCHEDULE_START_TIME` | No | Start time in HH:MM format (24-hour). Defaults to now + 5 min |
 | `SCHEDULE_FREQUENCY_HOURS` | No | Check frequency in hours (1-24, default: 6) |
+| `YOUTUBE_REQUEST_DELAY` | No | Min seconds between YouTube requests (default: 60) |
+| `YOUTUBE_PROXY_LIST` | No | Comma-separated proxy URLs, used as fallback when rate limiting fails |
 | `LOG_LEVEL` | No | Logging level (default: INFO) |
 
 ### Scheduling Configuration
