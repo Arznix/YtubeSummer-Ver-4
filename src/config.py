@@ -77,7 +77,10 @@ def _write_credential_file(config_dir: Path, creds: dict) -> None:
     cred_file.write_text(json.dumps(creds, indent=2))
     # Restrict permissions on Unix-like systems
     if sys.platform != "win32":
-        cred_file.chmod(0o600)
+        try:
+            cred_file.chmod(0o600)
+        except OSError:
+            pass
 
 
 def _keyring_available() -> bool:

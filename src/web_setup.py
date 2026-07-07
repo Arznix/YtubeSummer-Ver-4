@@ -460,6 +460,9 @@ function saveAll() {
         } else {
             showStatus('save-status', 'Configuration saved successfully!', false);
         }
+    })
+    .catch(function(err) {
+        showStatus('save-status', 'Save failed: ' + err.message, true);
     });
 }
 
@@ -542,49 +545,60 @@ class WebSetupServer:
                 env_updates[key] = value
 
         # Strip sensitive keys from .env file to avoid duplication
-        if self.env_file.exists():
-            lines = self.env_file.read_text().splitlines(keepends=True)
-            filtered = [l for l in lines if not any(
-                l.strip().startswith(k + "=") for k in sensitive_keys
-            )]
-            self.env_file.write_text("".join(filtered))
+        try:
+            if self.env_file.exists():
+                lines = self.env_file.read_text().splitlines(keepends=True)
+                filtered = [l for l in lines if not any(
+                    l.strip().startswith(k + "=") for k in sensitive_keys
+                )]
+                self.env_file.write_text("".join(filtered))
+        except OSError as exc:
+            _audit_logger.warning(f"Could not strip sensitive keys from .env: {exc}")
 
         # Remove sensitive keys from current process env
         for key in sensitive_keys:
             os.environ.pop(key, None)
 
         # Store sensitive credentials in OS keychain + fallback credential file
-        if "TELEGRAM_BOT_TOKEN" in keyring_updates or "TELEGRAM_CHAT_ID" in keyring_updates:
-            creds = _read_credential_file(self.config_dir)
-            token = keyring_updates.get("TELEGRAM_BOT_TOKEN")
-            chat_id = keyring_updates.get("TELEGRAM_CHAT_ID")
-            if token:
-                _keyring_set(KEYRING_SERVICE, "telegram_bot_token", str(token))
-                creds["telegram_bot_token"] = token
-            if chat_id:
-                _keyring_set(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
-                creds["telegram_chat_id"] = chat_id
-            _write_credential_file(self.config_dir, creds)
+        try:
+            if "TELEGRAM_BOT_TOKEN" in keyring_updates or "TELEGRAM_CHAT_ID" in keyring_updates:
+                creds = _read_credential_file(self.config_dir)
+                token = keyring_updates.get("TELEGRAM_BOT_TOKEN")
+                chat_id = keyring_updates.get("TELEGRAM_CHAT_ID")
+                if token:
+                    _keyring_set(KEYRING_SERVICE, "telegram_bot_token", str(token))
+                    creds["telegram_bot_token"] = token
+                if chat_id:
+                    _keyring_set(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
+                    creds["telegram_chat_id"] = chat_id
+                _write_credential_file(self.config_dir, creds)
+        except Exception as exc:
+            _audit_logger.warning(f"Could not store Telegram credentials: {exc}")
 
         # Store non-sensitive config in .env
-        if env_updates:
-            lines = []
-            if self.env_file.exists():
-                raw = self.env_file.read_text(encoding="utf-8")
-                lines = raw.splitlines()
-            # Remove any existing lines whose key matches what we're updating
-            update_keys = set(env_updates.keys())
-            lines = [l for l in lines if not any(
-                l.strip().startswith(k + "=") for k in update_keys
-            )]
-            # Remove sensitive keys again just in case
-            lines = [l for l in lines if not any(
-                l.strip().startswith(k + "=") for k in sensitive_keys
-            )]
-            # Append new values
-            for key, value in env_updates.items():
-                lines.append(f"{key}={value}")
-            self.env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        try:
+            if env_updates:
+                lines = []
+                if self.env_file.exists():
+                    raw = self.env_file.read_text(encoding="utf-8")
+                    lines = raw.splitlines()
+                # Remove any existing lines whose key matches what we're updating
+                update_keys = set(env_updates.keys())
+                lines = [l for l in lines if not any(
+                    l.strip().startswith(k + "=") for k in update_keys
+                )]
+                # Remove sensitive keys again just in case
+                lines = [l for l in lines if not any(
+                    l.strip().startswith(k + "=") for k in sensitive_keys
+                )]
+                # Append new values
+                for key, value in env_updates.items():
+                    lines.append(f"{key}={value}")
+                content = "\n".join(lines) + "\n"
+                self.env_file.write_text(content, encoding="utf-8")
+                _audit_logger.info(f"Saved {len(env_updates)} settings to {self.env_file}")
+        except Exception as exc:
+            _audit_logger.error(f"Failed to save .env: {exc}")
 
     def _make_handler(self):
         server = self
@@ -876,6 +890,7 @@ class WebSetupServer:
         print("=" * 60)
         print("Web setup server running at:", url)
         print("Server is bound to localhost (127.0.0.1) only.")
+        print(f"Config directory: {self.config_dir}")
         print("=" * 60)
         print()
         print("AUTH TOKEN (required for all API requests):")
