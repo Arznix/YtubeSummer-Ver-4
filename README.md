@@ -5,7 +5,7 @@ A locally hosted, privacy-focused YouTube subscription summarizer that monitors 
 ## Features
 
 - **Privacy-First**: All processing happens locally - no data sent to external AI services
-- **RSS Feed Monitoring**: No YouTube API quota required
+- **Three-Way Video Fetch**: Official YouTube Data API v3 → RSS feed → HTML page scraping fallback
 - **Local AI Summarization**: Uses Ollama with Qwen 2.5 models
 - **Telegram Notifications**: Delivers formatted summaries directly to your chat
 - **State Management**: SQLite database tracks processed videos
@@ -16,13 +16,15 @@ A locally hosted, privacy-focused YouTube subscription summarizer that monitors 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │                    YouTube Summarizer Pipeline                    │
-├─────────────────────────────────────────────────────────────────┤
-│  YouTube RSS Feeds  →  Transcript Extraction  →  Ollama/Qwen   │
-│         ↓                      ↓                      ↓         │
-│  State Manager  →  Agent Orchestrator  →  Telegram Notifier    │
-└─────────────────────────────────────────────────────────────────┘
+├──────────────────────────────────────────────────────────────────┤
+│  YouTube Data API v3 / RSS / Scrape  →  Transcript Extraction   │
+│         ↓                                  ↓                    │
+│  State Manager  →  Agent Orchestrator  →  Ollama/Qwen Summary   │
+│                                              ↓                  │
+│                                       Telegram Notification    │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
@@ -32,6 +34,7 @@ A locally hosted, privacy-focused YouTube subscription summarizer that monitors 
 - Ollama with qwen2.5:1.5b model
 - Telegram bot token and chat ID
 - YouTube channel IDs
+- (Optional) YouTube Data API v3 key for reliable video fetching
 
 See [PREREQUISITES.md](PREREQUISITES.md) for detailed setup instructions.
 
@@ -84,6 +87,10 @@ OLLAMA_MODEL=qwen2.5:1.5b
 
 # YouTube Channel IDs (comma-separated, up to 100 channels)
 YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2,channel_id_3
+
+# YouTube Data API v3 Key (optional, but recommended for reliability)
+# Get one free at: https://console.cloud.google.com/apis/library/youtube.googleapis.com
+# YOUTUBE_API_KEY=AIzaSy...
 
 # Scheduling Configuration
 # Start time in HH:MM format (24-hour), e.g., 06:30 for 6:30 AM
@@ -145,9 +152,10 @@ YtubeSummer-Ver-4/
 This project implements the Agent Skills pattern for modular, reusable components:
 
 ### YouTube RSS Reader Skill
-- Parse YouTube channel RSS feeds
-- Extract video metadata
-- No API quotas required
+- Fetches videos via three methods: YouTube Data API v3 → RSS feed → HTML scraping
+- Derives uploads playlist ID (UU) from channel ID (UC)
+- Extracts video metadata, titles, thumbnails, publish dates
+- Rate-limited with random jitter (60-240s) to avoid blocking
 
 ### Telegram Notifier Skill
 - Send formatted messages
@@ -168,6 +176,7 @@ See `skills/*/SKILL.md` for detailed documentation.
 | `OLLAMA_HOST` | Yes | Ollama server URL (default: http://localhost:11434) |
 | `OLLAMA_MODEL` | No | Model name (default: qwen2.5:1.5b) |
 | `YOUTUBE_CHANNEL_IDS` | Yes | Comma-separated YouTube channel IDs (up to 100) |
+| `YOUTUBE_API_KEY` | No | YouTube Data API v3 key. Enables reliable API-based video fetching |
 | `SCHEDULE_START_TIME` | No | Start time in HH:MM format (24-hour). Defaults to now + 5 min |
 | `SCHEDULE_FREQUENCY_HOURS` | No | Check frequency in hours (1-24, default: 6) |
 | `YOUTUBE_REQUEST_DELAY_MIN` | No | Minimum seconds between YouTube requests (default: 60) |
@@ -252,10 +261,12 @@ pytest --cov=src test_agent.py
    - Send at least one message to bot first
    - Check chat ID is correct
 
-3. **YouTube RSS feed errors**
-   - Verify channel ID is correct
-   - Test with known working channel
-   - Check network connectivity
+3. **YouTube video fetch failures (404/500 errors)**
+   - YouTube's RSS feed may be blocked in some regions. Add a `YOUTUBE_API_KEY` for reliable access.
+   - The program falls back automatically: API → RSS → HTML scraping. Check logs for which method succeeded.
+   - Verify channel ID is correct (starts with `UC`, 24 characters).
+   - If using an API key, check quota at Google Cloud Console.
+   - Test with a known working channel.
 
 ### Debug Mode
 
