@@ -153,12 +153,57 @@ class YouTubeMCPServer:
 
         raise RuntimeError(f"Failed to fetch {url} after all attempts")
 
+    @staticmethod
+    def _channel_id_to_playlist_id(channel_id: str) -> str:
+        """Convert a YouTube channel ID (UC...) to its uploads playlist ID (UU...).
+        The uploads playlist contains all public videos from the channel.
+        """
+        if channel_id.startswith("UC"):
+            return "UU" + channel_id[2:]
+        return channel_id
+
+    def _scrape_channel_videos(self, channel_id: str) -> List[Dict[str, Any]]:
+        """Fallback: scrape 'https://www.youtube.com/channel/{channel_id}/videos' for video IDs.
+
+        Extracts video IDs embedded in the page HTML (ytInitialData JSON).
+        """
+        try:
+            page_url = f"https://www.youtube.com/channel/{channel_id}/videos"
+            self.logger.info(f"Scraping channel videos page: {channel_id}")
+            resp = self._request_url(page_url)
+            text = resp.text
+
+            video_ids = list(dict.fromkeys(re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', text)))
+            if not video_ids:
+                self.logger.warning(f"No video IDs found in channel page for {channel_id}")
+                return []
+
+            videos = []
+            for vid in video_ids[:50]:
+                videos.append({
+                    'video_id': vid,
+                    'title': 'Unknown Title',
+                    'channel': channel_id,
+                    'published': '',
+                    'updated': '',
+                    'link': f'https://www.youtube.com/watch?v={vid}',
+                    'summary': '',
+                    'media_thumbnail': f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
+                    'yt_channel_id': channel_id
+                })
+
+            self.logger.info(f"Scraped {len(videos)} videos for channel {channel_id}")
+            return videos
+        except Exception as e:
+            self.logger.error(f"Error scraping channel {channel_id}: {e}")
+            return []
+
     def fetch_latest_videos_from_rss(self, channel_id: str) -> List[Dict[str, Any]]:
         """
-        Fetch latest videos from YouTube channel RSS feed.
+        Fetch latest videos from YouTube channel RSS feed, with HTML scraping fallback.
 
         Args:
-            channel_id: YouTube channel ID
+            channel_id: YouTube channel ID (UC prefix)
 
         Returns:
             List of video information dictionaries
@@ -172,7 +217,7 @@ class YouTubeMCPServer:
 
             if feed.bozo and not feed.entries:
                 self.logger.error(f"Error parsing RSS feed for channel {channel_id}: {feed.bozo_exception}")
-                return []
+                return self._scrape_channel_videos(channel_id)
             
             videos = []
             
@@ -206,8 +251,8 @@ class YouTubeMCPServer:
             return videos
             
         except Exception as e:
-            self.logger.error(f"Error fetching RSS feed for channel {channel_id}: {e}")
-            return []
+            self.logger.warning(f"RSS feed failed for channel {channel_id}, falling back to scrape: {e}")
+            return self._scrape_channel_videos(channel_id)
     
     def _extract_video_id_from_url(self, url: str) -> Optional[str]:
         """
