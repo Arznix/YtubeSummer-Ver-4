@@ -41,10 +41,25 @@ See [PREREQUISITES.md](PREREQUISITES.md) for detailed setup instructions.
 # Clone the repository
 git clone https://github.com/Arznix/YtubeSummer-Ver-4.git
 cd YtubeSummer-Ver-4
+```
 
-# Install dependencies
+Install dependencies. On some systems you cannot run `pip install` directly. If you get errors, create and activate a virtual environment first:
+
+```bash
+# Windows
+python -m venv venv
+.\venv\Scripts\activate
 pip install -r requirements.txt
 
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+> You must activate the virtual environment every time you open a new terminal before running the program. When activated, you should see `(venv)` in your terminal prompt.
+
+```bash
 # Run setup wizard
 python src/setup.py           # Terminal wizard
 python src/setup.py --web     # Browser-based setup (recommended)
