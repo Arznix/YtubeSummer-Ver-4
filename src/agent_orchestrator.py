@@ -88,7 +88,8 @@ class AgentOrchestrator:
                 if videos is None:
                     videos = self.youtube_server.fetch_latest_videos_from_rss(channel_id)
                 
-                for video in videos:
+                # Only process the 2 most recent videos per channel
+                for video in videos[:2]:
                     video_id = video.get('video_id')
                     if not video_id:
                         continue
