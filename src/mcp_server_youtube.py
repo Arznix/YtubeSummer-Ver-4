@@ -163,9 +163,10 @@ class YouTubeMCPServer:
         return channel_id
 
     def _scrape_channel_videos(self, channel_id: str) -> List[Dict[str, Any]]:
-        """Fallback: scrape 'https://www.youtube.com/channel/{channel_id}/videos' for video IDs.
+        """Fallback: scrape channel videos page for video IDs, titles, and thumbnails.
 
-        Extracts video IDs embedded in the page HTML (ytInitialData JSON).
+        Extracts data from ytInitialData JSON embedded in the page HTML.
+        Handles YouTube's new lockupViewModel format.
         """
         try:
             page_url = f"https://www.youtube.com/channel/{channel_id}/videos"
@@ -173,30 +174,88 @@ class YouTubeMCPServer:
             resp = self._request_url(page_url)
             text = resp.text
 
-            video_ids = list(dict.fromkeys(re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', text)))
-            if not video_ids:
-                self.logger.warning(f"No video IDs found in channel page for {channel_id}")
-                return []
+            m = re.search(r'ytInitialData\s*=\s*(\{.+?\});', text, re.DOTALL)
+            if not m:
+                return self._scrape_channel_videos_fallback(text, channel_id)
+
+            import json
+            data = json.loads(m.group(1))
 
             videos = []
-            for vid in video_ids[:50]:
-                videos.append({
-                    'video_id': vid,
-                    'title': 'Unknown Title',
-                    'channel': channel_id,
-                    'published': '',
-                    'updated': '',
-                    'link': f'https://www.youtube.com/watch?v={vid}',
-                    'summary': '',
-                    'media_thumbnail': f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
-                    'yt_channel_id': channel_id
-                })
+            try:
+                br = data['contents']['twoColumnBrowseResultsRenderer']
+                # Find the Videos tab (looks for richGridRenderer with lockupViewModels)
+                for tab in br.get('tabs', []):
+                    content = tab.get('tabRenderer', {}).get('content', {})
+                    rg = content.get('richGridRenderer', {})
+                    if not rg:
+                        continue
+                    for item in rg.get('contents', []):
+                        ri = item.get('richItemRenderer', {})
+                        if not ri:
+                            continue
+                        lockup = ri.get('content', {}).get('lockupViewModel', {})
+                        if not lockup:
+                            continue
+                        if lockup.get('contentType') != 'LOCKUP_CONTENT_TYPE_VIDEO':
+                            continue
+                        vid = lockup.get('contentId', '')
+                        if not vid or len(vid) != 11:
+                            continue
+                        meta = lockup.get('metadata', {}).get('lockupMetadataViewModel', {})
+                        title = meta.get('title', {}).get('content', '') or 'Unknown Title'
+                        # Extract date from metadata rows
+                        date_str = ''
+                        meta_rows = (meta.get('metadata', {})
+                                     .get('contentMetadataViewModel', {})
+                                     .get('metadataRows', []))
+                        for row in meta_rows:
+                            parts = row.get('metadataParts', [])
+                            if len(parts) > 1:
+                                date_str = parts[1].get('text', {}).get('content', '')
+                                break
+                        # Thumbnail
+                        thumb = ''
+                        sources = (lockup.get('contentImage', {})
+                                   .get('thumbnailViewModel', {})
+                                   .get('image', {})
+                                   .get('sources', []))
+                        if sources:
+                            thumb = sources[0].get('url', '')
+                        videos.append({
+                            'video_id': vid, 'title': title,
+                            'channel': channel_id,
+                            'published': date_str, 'updated': '',
+                            'link': f'https://www.youtube.com/watch?v={vid}',
+                            'summary': '',
+                            'media_thumbnail': thumb,
+                            'yt_channel_id': channel_id
+                        })
+            except (KeyError, IndexError, TypeError) as exc:
+                self.logger.warning(f"ytInitialData navigation failed: {exc}")
+
+            if not videos:
+                return self._scrape_channel_videos_fallback(text, channel_id)
 
             self.logger.info(f"Scraped {len(videos)} videos for channel {channel_id}")
-            return videos
+            return videos[:50]
         except Exception as e:
             self.logger.error(f"Error scraping channel {channel_id}: {e}")
-            return []
+            return self._scrape_channel_videos_fallback(text if 'text' in dir() else '', channel_id)
+
+    def _scrape_channel_videos_fallback(self, text: str, channel_id: str) -> List[Dict[str, Any]]:
+        """Fallback for _scrape_channel_videos — extract video IDs from raw HTML."""
+        video_ids = list(dict.fromkeys(
+            re.findall(r'"videoId":"([a-zA-Z0-9_-]{11})"', text)
+        ))
+        return [{
+            'video_id': vid, 'title': 'Unknown Title',
+            'channel': channel_id, 'published': '', 'updated': '',
+            'link': f'https://www.youtube.com/watch?v={vid}',
+            'summary': '',
+            'media_thumbnail': f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg',
+            'yt_channel_id': channel_id
+        } for vid in video_ids[:50]]
 
     def fetch_latest_videos_from_rss(self, channel_id: str) -> List[Dict[str, Any]]:
         """
