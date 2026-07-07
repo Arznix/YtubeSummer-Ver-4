@@ -212,6 +212,8 @@ var state = {
     telegram: { token: '', chat_id: '', username: '' }
 };
 
+var telegram_entered = false;
+
 function init() {
     fetch('/api/config', { headers: { 'X-Auth-Token': AUTH_TOKEN } })
     .then(function(r) { return r.json(); })
@@ -227,6 +229,7 @@ function init() {
             chat_id: data.telegram_chat_id || '',
             username: data.telegram_bot_username || ''
         };
+        telegram_entered = false;
         document.getElementById('freq-input').value = state.frequency;
         document.getElementById('auth-banner').textContent =
             'Session active. Server bound to 127.0.0.1 only.';
@@ -391,6 +394,7 @@ function saveTelegram() {
         if (data.error) {
             alert(data.error);
         } else {
+            telegram_entered = true;
             state.telegram.chat_id = chatId;
             state.telegram.username = username;
             state.telegram.token = token;
@@ -433,18 +437,21 @@ function saveOllama() {
 }
 
 function saveAll() {
+    var body = {
+        youtube_channel_ids: state.channels,
+        schedule_frequency_hours: state.frequency,
+        ollama_host: state.ollama_host,
+        ollama_model: state.ollama_model,
+    };
+    if (telegram_entered) {
+        body.telegram_chat_id = state.telegram.chat_id;
+        body.telegram_bot_username = state.telegram.username;
+        body.telegram_bot_token = state.telegram.token;
+    }
     fetch('/api/save', {
         method: 'POST',
         headers: apiHeaders(),
-        body: JSON.stringify({
-            youtube_channel_ids: state.channels,
-            schedule_frequency_hours: state.frequency,
-            ollama_host: state.ollama_host,
-            ollama_model: state.ollama_model,
-            telegram_chat_id: state.telegram.chat_id,
-            telegram_bot_username: state.telegram.username,
-            telegram_bot_token: state.telegram.token
-        })
+        body: JSON.stringify(body)
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
@@ -823,7 +830,7 @@ class WebSetupServer:
                     chat_id = body.get("telegram_chat_id", "").strip()
                     username = body.get("telegram_bot_username", "").strip()
 
-                    if token:
+                    if token and not token.startswith("***"):
                         updates["TELEGRAM_BOT_TOKEN"] = token
                     if chat_id:
                         updates["TELEGRAM_CHAT_ID"] = chat_id
