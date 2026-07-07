@@ -234,6 +234,20 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
             print("  [INFO] No channels entered. You can add them later.")
         return {"YOUTUBE_CHANNEL_IDS": channel_ids_str}
 
+    def setup_youtube_api_key(self) -> dict:
+        print("\n--- YouTube Data API Key (optional) ---")
+        print("Get a free key at https://console.cloud.google.com/apis/library/youtube.googleapis.com")
+        print("If provided, the program uses the official YouTube API (more reliable).")
+        print("If left blank, the program falls back to HTML scraping.")
+        print()
+        key = self.prompt_input("YouTube Data API Key", required=False)
+        print()
+        if key:
+            print("  [OK] API key set")
+        else:
+            print("  [INFO] No API key — will use scraping fallback")
+        return {"YOUTUBE_API_KEY": key} if key else {}
+
     def setup_scheduling(self) -> dict:
         print("\n--- Scheduling Configuration ---")
         print("Configure how often to check for new videos.")
@@ -339,6 +353,7 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
         config.update(self.setup_telegram())
         config.update(self.setup_ollama())
         config.update(self.setup_youtube_channels())
+        config.update(self.setup_youtube_api_key())
         config.update(self.setup_scheduling())
         self.save_configuration(config)
 

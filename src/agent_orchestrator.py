@@ -34,6 +34,7 @@ class AgentOrchestrator:
             request_delay_min=self.config.youtube_request_delay_min,
             request_delay_max=self.config.youtube_request_delay_max,
             proxy_list=self.config.youtube_proxy_list,
+            api_key=self.config.youtube_api_key,
         )
         self.ollama_client = OllamaClient(self.config.ollama_host, self.config.ollama_model)
         self.telegram_server = TelegramMCPServer(
@@ -82,8 +83,10 @@ class AgentOrchestrator:
         
         for channel_id in channel_ids:
             try:
-                # Fetch latest videos from RSS feed
-                videos = self.youtube_server.fetch_latest_videos_from_rss(channel_id)
+                # Fetch latest videos — try API first, fall back to RSS/scrape
+                videos = self.youtube_server.fetch_latest_videos_from_api(channel_id)
+                if videos is None:
+                    videos = self.youtube_server.fetch_latest_videos_from_rss(channel_id)
                 
                 for video in videos:
                     video_id = video.get('video_id')

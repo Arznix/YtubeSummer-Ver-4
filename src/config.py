@@ -288,6 +288,10 @@ class Config:
             return 240.0
 
     @property
+    def youtube_api_key(self) -> str:
+        return os.getenv("YOUTUBE_API_KEY", "")
+
+    @property
     def youtube_proxy_list(self) -> list:
         proxies_str = os.getenv("YOUTUBE_PROXY_LIST", "")
         if not proxies_str:
@@ -324,6 +328,7 @@ class Config:
             "youtube_request_delay_min": self.youtube_request_delay_min,
             "youtube_request_delay_max": self.youtube_request_delay_max,
             "youtube_proxy_list": self.youtube_proxy_list,
+            "youtube_api_key": "***" if self.youtube_api_key else "",
             "next_run_time": self.get_next_run_time().strftime("%Y-%m-%d %H:%M:%S"),
             "project_root": str(self.project_root),
         }

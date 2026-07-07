@@ -152,6 +152,20 @@ Only watch the videos that seem interesting to you.
 </div>
 </div>
 
+<!-- YouTube API Key Section -->
+<div class="section">
+<h2>YouTube Data API Key (optional)</h2>
+<p>Using an API key is more reliable than RSS scraping. Get one free at
+<a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank">Google Cloud Console</a>.
+If left blank, the program will fall back to scraping.</p>
+<label for="youtube-api-key">API Key:</label>
+<div class="input-row">
+<input type="text" id="youtube-api-key" placeholder="AIzaSy...">
+<button class="btn-enter" onclick="saveApiKey()">Enter</button>
+<span id="apikey-status" style="margin-left:10px; font-size:13px;"></span>
+</div>
+</div>
+
 <!-- Save Button -->
 <button class="btn-save" onclick="saveAll()">Save Configuration</button>
 <div id="save-status" class="status-msg" style="text-align:center;"></div>
@@ -209,7 +223,8 @@ var state = {
     frequency: 6,
     ollama_host: 'http://localhost:11434',
     ollama_model: 'qwen2.5:1.5b',
-    telegram: { token: '', chat_id: '', username: '' }
+    telegram: { token: '', chat_id: '', username: '' },
+    youtube_api_key: ''
 };
 
 var telegram_entered = false;
@@ -224,6 +239,8 @@ function init() {
         state.ollama_model = data.ollama_model || 'qwen2.5:1.5b';
         document.getElementById('ollama-host').value = state.ollama_host;
         document.getElementById('ollama-model').value = state.ollama_model;
+        state.youtube_api_key = data.youtube_api_key || '';
+        document.getElementById('youtube-api-key').value = state.youtube_api_key;
         state.telegram = {
             token: data.telegram_bot_token || '',
             chat_id: data.telegram_chat_id || '',
@@ -436,12 +453,33 @@ function saveOllama() {
     });
 }
 
+function saveApiKey() {
+    var key = document.getElementById('youtube-api-key').value.trim();
+    fetch('/api/youtube-api-key', {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({youtube_api_key: key})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            document.getElementById('apikey-status').textContent = data.error;
+            document.getElementById('apikey-status').style.color = 'red';
+        } else {
+            state.youtube_api_key = key;
+            document.getElementById('apikey-status').textContent = 'API key saved.';
+            document.getElementById('apikey-status').style.color = 'green';
+        }
+    });
+}
+
 function saveAll() {
     var body = {
         youtube_channel_ids: state.channels,
         schedule_frequency_hours: state.frequency,
         ollama_host: state.ollama_host,
         ollama_model: state.ollama_model,
+        youtube_api_key: state.youtube_api_key,
     };
     if (telegram_entered) {
         body.telegram_chat_id = state.telegram.chat_id;
@@ -525,6 +563,7 @@ class WebSetupServer:
             "OLLAMA_HOST": ollama_host,
             "OLLAMA_MODEL": os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b"),
             "YOUTUBE_CHANNEL_IDS": os.getenv("YOUTUBE_CHANNEL_IDS", ""),
+            "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY", ""),
             "SCHEDULE_FREQUENCY_HOURS": os.getenv("SCHEDULE_FREQUENCY_HOURS", "6"),
             "SCHEDULE_START_TIME": os.getenv("SCHEDULE_START_TIME", ""),
         }
@@ -680,6 +719,7 @@ class WebSetupServer:
                         "youtube_channel_ids": channels,
                         "schedule_frequency_hours": freq,
                         "schedule_start_time": env["SCHEDULE_START_TIME"],
+                        "youtube_api_key": env["YOUTUBE_API_KEY"],
                     })
                     self._log_audit("GET", "/api/config", 200)
 
@@ -803,6 +843,13 @@ class WebSetupServer:
                     self._send_json({"success": True})
                     self._log_audit("POST", "/api/ollama", 200)
 
+                elif parsed.path == "/api/youtube-api-key":
+                    body = self._read_body()
+                    key = body.get("youtube_api_key", "").strip()
+                    server._save_env({"YOUTUBE_API_KEY": key})
+                    self._send_json({"success": True})
+                    self._log_audit("POST", "/api/youtube-api-key", 200)
+
                 elif parsed.path == "/api/telegram":
                     body = self._read_body()
                     token = body.get("bot_token", "").strip()
@@ -859,6 +906,9 @@ class WebSetupServer:
                         updates["OLLAMA_HOST"] = ollama_host
                     if ollama_model:
                         updates["OLLAMA_MODEL"] = ollama_model
+
+                    api_key = body.get("youtube_api_key", "").strip()
+                    updates["YOUTUBE_API_KEY"] = api_key
 
                     token = body.get("telegram_bot_token", "").strip()
                     chat_id = body.get("telegram_chat_id", "").strip()

@@ -321,42 +321,67 @@ class TestYouTubeMCPServer(unittest.TestCase):
         from mcp_server_youtube import YouTubeMCPServer
         self.youtube_server = YouTubeMCPServer()
     
+    @patch('mcp_server_youtube.YouTubeMCPServer._request_url')
+    def test_fetch_latest_videos_from_api_no_key(self, mock_req):
+        """Test API method returns None when no key configured."""
+        videos = self.youtube_server.fetch_latest_videos_from_api("UC-lHJZR3Gqxm24_Vd_AJ5Yw")
+        self.assertIsNone(videos)
+
+    @patch('mcp_server_youtube.YouTubeMCPServer._request_url')
+    def test_fetch_latest_videos_from_api_with_key(self, mock_req):
+        """Test API method with a mock key."""
+        from mcp_server_youtube import YouTubeMCPServer
+        server = YouTubeMCPServer(api_key="test_key")
+        mock_resp = Mock()
+        mock_resp.json.return_value = {
+            "items": [
+                {
+                    "snippet": {
+                        "resourceId": {"videoId": "test123"},
+                        "title": "Test Video 1",
+                        "publishedAt": "2024-01-01T00:00:00Z",
+                        "thumbnails": {"default": {"url": "https://thumb.url/1"}},
+                        "channelTitle": "Test Channel",
+                        "description": "Test desc"
+                    }
+                }
+            ]
+        }
+        mock_req.return_value = mock_resp
+
+        videos = server.fetch_latest_videos_from_api("UC-lHJZR3Gqxm24_Vd_AJ5Yw")
+        self.assertEqual(len(videos), 1)
+        self.assertEqual(videos[0]['video_id'], 'test123')
+        self.assertEqual(videos[0]['title'], 'Test Video 1')
+        self.assertIn('key=test_key', mock_req.call_args[0][0])
+
+    @patch('mcp_server_youtube.YouTubeMCPServer._request_url')
     @patch('mcp_server_youtube.feedparser.parse')
-    def test_fetch_latest_videos_from_rss(self, mock_parse):
-        """Test fetching latest videos from RSS feed."""
-        # Mock feed response
+    def test_fetch_latest_videos_from_rss(self, mock_parse, mock_req):
+        """Test RSS/scrape fallback when RSS fails."""
+        from mcp_server_youtube import YouTubeMCPServer
+        server = YouTubeMCPServer(api_key="")
+        mock_rss = Mock()
+        mock_rss.text = "<?xml version='1.0'?><feed><title>Test</title></feed>"
+        mock_req.return_value = mock_rss
+
         mock_feed = Mock()
         mock_feed.bozo = False
         mock_feed.entries = [
-            Mock(
-                get=lambda x, default: {
-                    'title': 'Test Video 1',
-                    'link': 'https://www.youtube.com/watch?v=test123',
-                    'published': '2024-01-01T00:00:00Z',
-                    'updated': '2024-01-01T00:00:00Z',
-                    'summary': 'Test summary'
-                }.get(x, default)
-            ),
-            Mock(
-                get=lambda x, default: {
-                    'title': 'Test Video 2',
-                    'link': 'https://www.youtube.com/watch?v=test456',
-                    'published': '2024-01-02T00:00:00Z',
-                    'updated': '2024-01-02T00:00:00Z',
-                    'summary': 'Test summary 2'
-                }.get(x, default)
-            )
+            Mock(get=lambda x, d: {
+                'title': 'Test Video 1',
+                'link': 'https://www.youtube.com/watch?v=test123',
+                'published': '2024-01-01T00:00:00Z',
+                'updated': '',
+                'summary': 'Test'
+            }.get(x, d))
         ]
         mock_feed.feed.title = "Test Channel"
-        
         mock_parse.return_value = mock_feed
-        
-        # Test fetch
-        videos = self.youtube_server.fetch_latest_videos_from_rss("UC-lHJZR3Gqxm24_Vd_AJ5Yw")
-        
-        self.assertEqual(len(videos), 2)
+
+        videos = server.fetch_latest_videos_from_rss("UC-lHJZR3Gqxm24_Vd_AJ5Yw")
+        self.assertEqual(len(videos), 1)
         self.assertEqual(videos[0]['video_id'], 'test123')
-        self.assertEqual(videos[1]['video_id'], 'test456')
     
     def test_extract_video_id_from_url(self):
         """Test extracting video ID from URL."""

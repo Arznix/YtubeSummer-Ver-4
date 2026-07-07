@@ -55,7 +55,7 @@ class ProxyRotator:
 class YouTubeMCPServer:
     """YouTube MCP Server for RSS feed parsing and transcript extraction."""
     
-    def __init__(self, timeout: int = 30, request_delay_min: float = 60.0, request_delay_max: float = 240.0, proxy_list: Optional[List[str]] = None):
+    def __init__(self, timeout: int = 30, request_delay_min: float = 60.0, request_delay_max: float = 240.0, proxy_list: Optional[List[str]] = None, api_key: str = ""):
         """
         Initialize YouTube MCP Server.
 
@@ -64,10 +64,12 @@ class YouTubeMCPServer:
             request_delay_min: Minimum seconds between YouTube requests
             request_delay_max: Maximum seconds between YouTube requests (random jitter)
             proxy_list: List of proxy URLs to rotate through
+            api_key: YouTube Data API v3 key (optional, enables API-based video fetching)
         """
         self.timeout = timeout
         self.request_delay_min = request_delay_min
         self.request_delay_max = request_delay_max
+        self.api_key = api_key
         self.logger = logging.getLogger(__name__)
         self.rate_limiter = RateLimiter(request_delay_min, request_delay_max)
         self.proxy_rotator = ProxyRotator(proxy_list)
@@ -161,6 +163,68 @@ class YouTubeMCPServer:
         if channel_id.startswith("UC"):
             return "UU" + channel_id[2:]
         return channel_id
+
+    def fetch_latest_videos_from_api(self, channel_id: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Fetch latest videos using the YouTube Data API v3 playlistItems endpoint.
+
+        Uses the uploads playlist ID derived from the channel ID (UC -> UU).
+        Requires a valid YOUTUBE_API_KEY. Returns None if no key is configured.
+
+        Args:
+            channel_id: YouTube channel ID (UC prefix)
+
+        Returns:
+            List of video info dicts, or None if API key is missing
+        """
+        if not self.api_key:
+            return None
+
+        playlist_id = self._channel_id_to_playlist_id(channel_id)
+        url = ("https://www.googleapis.com/youtube/v3/playlistItems"
+               f"?part=snippet&playlistId={playlist_id}&maxResults=50&key={self.api_key}")
+
+        self.logger.info(f"Fetching videos from API for channel {channel_id}")
+        try:
+            resp = self._request_url(url)
+            data = resp.json()
+        except Exception as e:
+            self.logger.warning(f"YouTube API request failed for {channel_id}: {e}")
+            return []
+
+        items = data.get('items', [])
+        if not items:
+            self.logger.info(f"No videos returned by API for channel {channel_id}")
+            return []
+
+        videos = []
+        for item in items:
+            snippet = item.get('snippet', {})
+            vid = snippet.get('resourceId', {}).get('videoId', '')
+            if not vid:
+                continue
+            title = snippet.get('title', 'Unknown Title')
+            published = snippet.get('publishedAt', '')
+            thumbnails = snippet.get('thumbnails', {})
+            thumb = ''
+            for quality in ('maxres', 'high', 'medium', 'default'):
+                if quality in thumbnails:
+                    thumb = thumbnails[quality].get('url', '')
+                    break
+            channel_name = snippet.get('channelTitle', '') or channel_id
+            description = snippet.get('description', '')
+            videos.append({
+                'video_id': vid, 'title': title,
+                'channel': channel_name,
+                'published': published, 'updated': '',
+                'link': f'https://www.youtube.com/watch?v={vid}',
+                'summary': description,
+                'media_thumbnail': thumb,
+                'yt_channel_id': channel_id
+            })
+
+        self.logger.info(f"API returned {len(videos)} videos for channel {channel_id}")
+        return videos
 
     def _scrape_channel_videos(self, channel_id: str) -> List[Dict[str, Any]]:
         """Fallback: scrape channel videos page for video IDs, titles, and thumbnails.
