@@ -55,6 +55,8 @@ curl http://localhost:11434/api/tags
 
 If the `curl` command returns a JSON list of models, Ollama is running. If it says `Connection refused`, Ollama is not running — check that `ollama serve` completed without errors.
 
+> `qwen2.5:1.5b` is the default model. You can use **any** local LLM supported by Ollama (e.g., `llama3`, `mistral`, `gemma`). Set the model name in `.env` with `OLLAMA_MODEL=your-model-name`.
+
 > The default `OLLAMA_HOST=http://localhost:11434` in `.env` must match where Ollama is listening. Change it if Ollama is on a different machine or port.
 
 ### 2. Installation
