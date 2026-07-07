@@ -559,6 +559,7 @@ class WebSetupServer:
 
         token = _keyring_get(KEYRING_SERVICE, "telegram_bot_token")
         chat_id = _keyring_get(KEYRING_SERVICE, "telegram_chat_id")
+        yt_key = _keyring_get(KEYRING_SERVICE, "youtube_api_key")
 
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         if not ollama_host.startswith(("http://", "https://")):
@@ -571,7 +572,7 @@ class WebSetupServer:
             "OLLAMA_HOST": ollama_host,
             "OLLAMA_MODEL": os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b"),
             "YOUTUBE_CHANNEL_IDS": os.getenv("YOUTUBE_CHANNEL_IDS", ""),
-            "YOUTUBE_API_KEY": os.getenv("YOUTUBE_API_KEY", ""),
+            "YOUTUBE_API_KEY": yt_key or os.getenv("YOUTUBE_API_KEY", ""),
             "SCHEDULE_FREQUENCY_HOURS": os.getenv("SCHEDULE_FREQUENCY_HOURS", "6"),
             "SCHEDULE_START_TIME": os.getenv("SCHEDULE_START_TIME", ""),
         }
@@ -581,7 +582,7 @@ class WebSetupServer:
         if not self.env_file.exists():
             self.env_file.touch()
 
-        sensitive_keys = {"TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"}
+        sensitive_keys = {"TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "YOUTUBE_API_KEY"}
         keyring_updates = {}
         env_updates = {}
 
@@ -608,7 +609,9 @@ class WebSetupServer:
 
         # Store sensitive credentials in OS keychain + fallback credential file
         try:
-            if "TELEGRAM_BOT_TOKEN" in keyring_updates or "TELEGRAM_CHAT_ID" in keyring_updates:
+            has_tg = "TELEGRAM_BOT_TOKEN" in keyring_updates or "TELEGRAM_CHAT_ID" in keyring_updates
+            has_yt = "YOUTUBE_API_KEY" in keyring_updates
+            if has_tg or has_yt:
                 creds = _read_credential_file(self.config_dir)
                 token = keyring_updates.get("TELEGRAM_BOT_TOKEN")
                 chat_id = keyring_updates.get("TELEGRAM_CHAT_ID")
@@ -618,9 +621,17 @@ class WebSetupServer:
                 if chat_id:
                     _keyring_set(KEYRING_SERVICE, "telegram_chat_id", str(chat_id))
                     creds["telegram_chat_id"] = chat_id
+                if has_yt:
+                    yt_key = keyring_updates.get("YOUTUBE_API_KEY", "")
+                    if yt_key:
+                        _keyring_set(KEYRING_SERVICE, "youtube_api_key", str(yt_key))
+                        creds["youtube_api_key"] = yt_key
+                    else:
+                        _keyring_delete(KEYRING_SERVICE, "youtube_api_key")
+                        creds.pop("youtube_api_key", None)
                 _write_credential_file(self.config_dir, creds)
         except Exception as exc:
-            _audit_logger.warning(f"Could not store Telegram credentials: {exc}")
+            _audit_logger.warning(f"Could not store sensitive credentials: {exc}")
 
         # Store non-sensitive config in .env
         try:
@@ -727,7 +738,7 @@ class WebSetupServer:
                         "youtube_channel_ids": channels,
                         "schedule_frequency_hours": freq,
                         "schedule_start_time": env["SCHEDULE_START_TIME"],
-                        "youtube_api_key": env["YOUTUBE_API_KEY"],
+                        "youtube_api_key": _mask_token(env["YOUTUBE_API_KEY"]),
                     })
                     self._log_audit("GET", "/api/config", 200)
 
@@ -916,7 +927,8 @@ class WebSetupServer:
                         updates["OLLAMA_MODEL"] = ollama_model
 
                     api_key = body.get("youtube_api_key", "").strip()
-                    updates["YOUTUBE_API_KEY"] = api_key
+                    if api_key and not api_key.startswith("***"):
+                        updates["YOUTUBE_API_KEY"] = api_key
 
                     token = body.get("telegram_bot_token", "").strip()
                     chat_id = body.get("telegram_chat_id", "").strip()

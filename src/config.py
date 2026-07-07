@@ -289,6 +289,12 @@ class Config:
 
     @property
     def youtube_api_key(self) -> str:
+        key = _keyring_get(KEYRING_SERVICE, "youtube_api_key")
+        if key:
+            return key
+        creds = _read_credential_file(self.config_dir)
+        if "youtube_api_key" in creds:
+            return creds["youtube_api_key"]
         return os.getenv("YOUTUBE_API_KEY", "")
 
     @property
@@ -340,14 +346,19 @@ class Config:
             print(f"  {key}: {value}")
 
     @staticmethod
-    def store_credentials(token: str, chat_id: str) -> None:
+    def store_credentials(token: str, chat_id: str, youtube_api_key: str = "") -> None:
         config_dir = get_config_dir()
-        ok = _keyring_set(KEYRING_SERVICE, "telegram_bot_token", token) and \
-             _keyring_set(KEYRING_SERVICE, "telegram_chat_id", chat_id)
-        if not ok:
+        tg_ok = _keyring_set(KEYRING_SERVICE, "telegram_bot_token", token) and \
+                _keyring_set(KEYRING_SERVICE, "telegram_chat_id", chat_id)
+        yt_ok = True
+        if youtube_api_key:
+            yt_ok = _keyring_set(KEYRING_SERVICE, "youtube_api_key", youtube_api_key)
+        if not (tg_ok and yt_ok):
             creds = _read_credential_file(config_dir)
             creds["telegram_bot_token"] = token
             creds["telegram_chat_id"] = chat_id
+            if youtube_api_key:
+                creds["youtube_api_key"] = youtube_api_key
             _write_credential_file(config_dir, creds)
 
     @staticmethod
@@ -355,6 +366,7 @@ class Config:
         config_dir = get_config_dir()
         _keyring_delete(KEYRING_SERVICE, "telegram_bot_token")
         _keyring_delete(KEYRING_SERVICE, "telegram_chat_id")
+        _keyring_delete(KEYRING_SERVICE, "youtube_api_key")
         cred_file = _get_credential_file(config_dir)
         if cred_file.exists():
             try:

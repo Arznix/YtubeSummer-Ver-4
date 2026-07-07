@@ -297,15 +297,19 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
 
         bot_token = config.pop("TELEGRAM_BOT_TOKEN", None)
         chat_id = config.pop("TELEGRAM_CHAT_ID", None)
+        yt_key = config.pop("YOUTUBE_API_KEY", None)
 
         if bot_token and chat_id:
-            Cfg.store_credentials(bot_token, chat_id)
+            Cfg.store_credentials(bot_token, chat_id, yt_key or "")
+        elif yt_key:
+            from config import _keyring_set as _ks
+            _ks("youtube-summarizer", "youtube_api_key", yt_key)
 
         for key, value in config.items():
             set_key(str(self.env_file), key, value)
 
         print(f"\nConfiguration saved to {self.env_file}")
-        print("Sensitive credentials (bot token, chat ID) stored in OS keychain.")
+        print("Sensitive credentials (bot token, chat ID, YouTube API key) stored in OS keychain.")
 
     def test_configuration(self) -> bool:
         print("\n--- Testing Configuration ---")
