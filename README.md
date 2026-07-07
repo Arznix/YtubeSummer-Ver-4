@@ -31,12 +31,31 @@ A locally hosted, privacy-focused YouTube subscription summarizer that monitors 
 
 ### 1. Prerequisites
 - Python 3.8+
-- Ollama with qwen2.5:1.5b model
+- Ollama with qwen2.5:1.5b model (see setup below)
 - Telegram bot token and chat ID
 - YouTube channel IDs
 - (Optional) YouTube Data API v3 key for reliable video fetching
 
 See [PREREQUISITES.md](PREREQUISITES.md) for detailed setup instructions.
+
+#### Start Ollama
+
+Ollama must be running **before** you launch the program. It is not started automatically.
+
+```bash
+# Start the Ollama server
+ollama serve
+
+# In a separate terminal, pull the required model
+ollama pull qwen2.5:1.5b
+
+# Verify Ollama is reachable
+curl http://localhost:11434/api/tags
+```
+
+If the `curl` command returns a JSON list of models, Ollama is running. If it says `Connection refused`, Ollama is not running — check that `ollama serve` completed without errors.
+
+> The default `OLLAMA_HOST=http://localhost:11434` in `.env` must match where Ollama is listening. Change it if Ollama is on a different machine or port.
 
 ### 2. Installation
 
