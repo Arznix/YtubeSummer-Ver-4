@@ -10,12 +10,80 @@ except ImportError:
     print("Install all dependencies with: pip install -r requirements.txt")
     sys.exit(1)
 import signal
+from pathlib import Path
+from email.utils import parsedate_to_datetime
 
-from config import load_config, Config
+from config import load_config, Config, get_config_dir
 from state_manager import StateManager
 from mcp_server_youtube import YouTubeMCPServer
 from ollama_client import OllamaClient
 from mcp_server_notifier import TelegramMCPServer
+
+SCAN_LOG_FILE = "summarized-lst.txt"
+DATE_FMT = "%Y-%m-%d"
+TIME_FMT = "%H:%M:%S"
+KEY_CREATE_ID = "create-ID"
+KEY_LAST_DATE = "last-date-accessed"
+KEY_LAST_TIME = "last-time-accessed"
+
+
+def _get_scan_log_path() -> Path:
+    return get_config_dir() / SCAN_LOG_FILE
+
+
+def _read_scan_log() -> Dict[str, Dict[str, str]]:
+    path = _get_scan_log_path()
+    scans: Dict[str, Dict[str, str]] = {}
+    if not path.exists():
+        return scans
+    try:
+        for line in path.read_text("utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            entry = {}
+            cid = None
+            for part in parts:
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    if k == KEY_CREATE_ID:
+                        cid = v
+                    entry[k] = v
+            if cid is not None:
+                scans[cid] = entry
+    except (OSError, UnicodeDecodeError):
+        pass
+    return scans
+
+
+def _write_scan_log(scans: Dict[str, Dict[str, str]]) -> None:
+    path = _get_scan_log_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            f"{KEY_CREATE_ID}={entry[KEY_CREATE_ID]} {KEY_LAST_DATE}={entry.get(KEY_LAST_DATE, '')} {KEY_LAST_TIME}={entry.get(KEY_LAST_TIME, '')}"
+            for entry in scans.values()
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        pass
+
+
+def _parse_published(pub_str: str) -> Optional[datetime]:
+    if not pub_str:
+        return None
+    # Try ISO 8601 (YouTube API)
+    try:
+        return datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        pass
+    # Try RFC 2822 (RSS feed)
+    try:
+        return parsedate_to_datetime(pub_str)
+    except (ValueError, TypeError, OverflowError):
+        pass
+    return None
 
 
 class AgentOrchestrator:
@@ -81,6 +149,10 @@ class AgentOrchestrator:
             self.logger.warning("No YouTube channel IDs configured")
             return []
         
+        # Read the scan log to get last-access timestamps per channel
+        scan_log = _read_scan_log()
+        now = datetime.now()
+        
         for channel_id in channel_ids:
             try:
                 # Fetch latest videos — try API first, fall back to RSS/scrape
@@ -88,8 +160,30 @@ class AgentOrchestrator:
                 if videos is None:
                     videos = self.youtube_server.fetch_latest_videos_from_rss(channel_id)
                 
-                # Only process the 2 most recent videos per channel
-                for video in videos[:2]:
+                # Determine last scan datetime for this channel
+                last_scan: Optional[datetime] = None
+                entry = scan_log.get(channel_id)
+                if entry:
+                    date_str = entry.get(KEY_LAST_DATE, "")
+                    time_str = entry.get(KEY_LAST_TIME, "")
+                    if date_str and time_str:
+                        try:
+                            last_scan = datetime.strptime(f"{date_str} {time_str}", f"{DATE_FMT} {TIME_FMT}")
+                        except (ValueError, TypeError):
+                            pass
+                
+                # Screen by publication date — skip videos older than the last scan
+                screened = []
+                for video in videos:
+                    pub = _parse_published(video.get("published", ""))
+                    if pub is None:
+                        # No parseable date: include it to be safe
+                        screened.append(video)
+                    elif last_scan is None or pub > last_scan:
+                        screened.append(video)
+                
+                # Only process the 2 most recent of the screened videos
+                for video in screened[:2]:
                     video_id = video.get('video_id')
                     if not video_id:
                         continue
@@ -98,10 +192,20 @@ class AgentOrchestrator:
                     if not self.state_manager.video_exists(video_id):
                         self.logger.info(f"New video found: {video.get('title', 'Unknown')}")
                         new_videos.append(video)
+                
+                # Update scan log for this channel
+                scan_log[channel_id] = {
+                    KEY_CREATE_ID: channel_id,
+                    KEY_LAST_DATE: now.strftime(DATE_FMT),
+                    KEY_LAST_TIME: now.strftime(TIME_FMT),
+                }
                     
             except Exception as e:
                 self.logger.error(f"Error checking channel {channel_id}: {e}")
                 continue
+        
+        # Persist updated scan log
+        _write_scan_log(scan_log)
         
         return new_videos
     
