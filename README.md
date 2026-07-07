@@ -67,7 +67,7 @@ git clone https://github.com/Arznix/YtubeSummer-Ver-4.git
 cd YtubeSummer-Ver-4
 ```
 
-Install dependencies. On some systems you cannot run `pip install` directly. If you get errors, create and activate a virtual environment first:
+Create and activate a Python virtual environment, then install dependencies:
 
 ```bash
 # Windows
