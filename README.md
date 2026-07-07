@@ -111,6 +111,8 @@ YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2,channel_id_3
 
 # YouTube Data API v3 Key (optional, but recommended for reliability)
 # Get one free at: https://console.cloud.google.com/apis/library/youtube.googleapis.com
+# Free tier: 10,000 quota units/day (~10,000 requests to playlistItems.list).
+# With 6-hour checks and 2 videos per channel, a single channel uses ~4 requests/day.
 # YOUTUBE_API_KEY=AIzaSy...
 
 # Scheduling Configuration
@@ -197,7 +199,7 @@ See `skills/*/SKILL.md` for detailed documentation.
 | `OLLAMA_HOST` | Yes | Ollama server URL (default: http://localhost:11434) |
 | `OLLAMA_MODEL` | No | Model name (default: qwen2.5:1.5b) |
 | `YOUTUBE_CHANNEL_IDS` | Yes | Comma-separated YouTube channel IDs (up to 100) |
-| `YOUTUBE_API_KEY` | No | YouTube Data API v3 key. Enables reliable API-based video fetching |
+| `YOUTUBE_API_KEY` | No | YouTube Data API v3 key. Free tier: 10,000 quota units/day |
 | `SCHEDULE_START_TIME` | No | Start time in HH:MM format (24-hour). Defaults to now + 5 min |
 | `SCHEDULE_FREQUENCY_HOURS` | No | Check frequency in hours (1-24, default: 6) |
 | `YOUTUBE_REQUEST_DELAY_MIN` | No | Minimum seconds between YouTube requests (default: 60) |
@@ -286,7 +288,7 @@ pytest --cov=src test_agent.py
    - YouTube's RSS feed may be blocked in some regions. Add a `YOUTUBE_API_KEY` for reliable access.
    - The program falls back automatically: API → RSS → HTML scraping. Check logs for which method succeeded.
    - Verify channel ID is correct (starts with `UC`, 24 characters).
-   - If using an API key, check quota at Google Cloud Console.
+    - If using an API key, check quota at Google Cloud Console (10,000/day free tier).
    - Test with a known working channel.
 
 ### Debug Mode
