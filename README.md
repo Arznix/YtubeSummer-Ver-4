@@ -67,7 +67,15 @@ git clone https://github.com/Arznix/YtubeSummer-Ver-4.git
 cd YtubeSummer-Ver-4
 ```
 
-Create and activate a Python virtual environment, then install dependencies:
+Install the required Python dependencies:
+
+Try to run this command first:
+
+```bash
+pip install -r requirements.txt
+```
+
+If this does not work then you need to run the commands below to run it in a virtual environment:
 
 ```bash
 # Windows
