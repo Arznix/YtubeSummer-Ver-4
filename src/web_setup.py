@@ -511,11 +511,15 @@ class WebSetupServer:
         token = _keyring_get(KEYRING_SERVICE, "telegram_bot_token")
         chat_id = _keyring_get(KEYRING_SERVICE, "telegram_chat_id")
 
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        if not ollama_host.startswith(("http://", "https://")):
+            ollama_host = "http://localhost:11434"
+
         return {
             "TELEGRAM_BOT_TOKEN": token or os.getenv("TELEGRAM_BOT_TOKEN", ""),
             "TELEGRAM_CHAT_ID": chat_id or os.getenv("TELEGRAM_CHAT_ID", ""),
             "TELEGRAM_BOT_USERNAME": os.getenv("TELEGRAM_BOT_USERNAME", ""),
-            "OLLAMA_HOST": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+            "OLLAMA_HOST": ollama_host,
             "OLLAMA_MODEL": os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b"),
             "YOUTUBE_CHANNEL_IDS": os.getenv("YOUTUBE_CHANNEL_IDS", ""),
             "SCHEDULE_FREQUENCY_HOURS": os.getenv("SCHEDULE_FREQUENCY_HOURS", "6"),
