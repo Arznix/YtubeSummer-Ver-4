@@ -563,8 +563,24 @@ class WebSetupServer:
             _write_credential_file(self.config_dir, creds)
 
         # Store non-sensitive config in .env
-        for key, value in env_updates.items():
-            set_key(env_path, key, str(value))
+        if env_updates:
+            lines = []
+            if self.env_file.exists():
+                raw = self.env_file.read_text(encoding="utf-8")
+                lines = raw.splitlines()
+            # Remove any existing lines whose key matches what we're updating
+            update_keys = set(env_updates.keys())
+            lines = [l for l in lines if not any(
+                l.strip().startswith(k + "=") for k in update_keys
+            )]
+            # Remove sensitive keys again just in case
+            lines = [l for l in lines if not any(
+                l.strip().startswith(k + "=") for k in sensitive_keys
+            )]
+            # Append new values
+            for key, value in env_updates.items():
+                lines.append(f"{key}={value}")
+            self.env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _make_handler(self):
         server = self
