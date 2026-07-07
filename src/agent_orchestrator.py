@@ -2,9 +2,14 @@ import time
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-import schedule
-import signal
 import sys
+try:
+    import schedule
+except ImportError:
+    print("ERROR: Missing required module 'schedule'.")
+    print("Install all dependencies with: pip install -r requirements.txt")
+    sys.exit(1)
+import signal
 
 from config import load_config, Config
 from state_manager import StateManager
