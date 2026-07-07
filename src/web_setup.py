@@ -474,12 +474,16 @@ function saveApiKey() {
 }
 
 function saveAll() {
+    var freqVal = parseInt(document.getElementById('freq-input').value, 10);
+    if (isNaN(freqVal) || freqVal < 1 || freqVal > 24) {
+        freqVal = state.frequency;
+    }
     var body = {
         youtube_channel_ids: state.channels,
-        schedule_frequency_hours: state.frequency,
-        ollama_host: state.ollama_host,
-        ollama_model: state.ollama_model,
-        youtube_api_key: state.youtube_api_key,
+        schedule_frequency_hours: freqVal,
+        ollama_host: document.getElementById('ollama-host').value.trim() || state.ollama_host,
+        ollama_model: document.getElementById('ollama-model').value.trim() || state.ollama_model,
+        youtube_api_key: document.getElementById('youtube-api-key').value.trim() || state.youtube_api_key,
     };
     if (telegram_entered) {
         body.telegram_chat_id = state.telegram.chat_id;
@@ -496,6 +500,10 @@ function saveAll() {
         if (data.error) {
             showStatus('save-status', data.error, true);
         } else {
+            state.frequency = freqVal;
+            state.ollama_host = document.getElementById('ollama-host').value.trim() || state.ollama_host;
+            state.ollama_model = document.getElementById('ollama-model').value.trim() || state.ollama_model;
+            state.youtube_api_key = document.getElementById('youtube-api-key').value.trim() || state.youtube_api_key;
             showStatus('save-status', 'Configuration saved successfully!', false);
         }
     })
